@@ -260,7 +260,7 @@ Coming Soon...
 
 **Ayush Pandey**
 
-B.Tech Computer Science Engineering
+B.Tech Computer Science and Engineering
 
 KIET Group of Institutions
 
