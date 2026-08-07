@@ -1,0 +1,7 @@
+/* CompressPDF uses shared page styles from ImageToPDF.css */
+
+.file-size {
+  font-size: 0.8rem;
+  color: var(--accent);
+  font-weight: 500;
+}
