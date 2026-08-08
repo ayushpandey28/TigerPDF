@@ -6,7 +6,7 @@ const API_BASE_URL = 'https://tigerpdf.onrender.com/api';
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 150000,
 });
 
 // Convert images to PDF
