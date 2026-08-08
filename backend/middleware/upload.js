@@ -1,21 +1,36 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+// Temporary upload directory
+const uploadDir = path.join(os.tmpdir(), 'tigerpdf-uploads');
+
+// Create directory if it doesn't exist
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Where to save uploaded files
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/');
+    cb(null, uploadDir);
   },
+
   filename: function (req, file, cb) {
     const uniqueName = Date.now() + '-' + file.originalname;
     cb(null, uniqueName);
   },
 });
 
-// Upload for images (JPG, PNG, WEBP)
+// Upload for images
 const uploadImage = multer({
   storage: storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB max
+
+  limits: {
+    fileSize: 100 * 1024 * 1024,
+  },
+
   fileFilter: function (req, file, cb) {
     const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
     const ext = path.extname(file.originalname).toLowerCase();
@@ -31,7 +46,11 @@ const uploadImage = multer({
 // Upload for PDF files
 const uploadPdf = multer({
   storage: storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 20 MB max
+
+  limits: {
+    fileSize: 100 * 1024 * 1024,
+  },
+
   fileFilter: function (req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
 
@@ -43,4 +62,7 @@ const uploadPdf = multer({
   },
 });
 
-module.exports = { uploadImage, uploadPdf };
+module.exports = {
+  uploadImage,
+  uploadPdf,
+};
