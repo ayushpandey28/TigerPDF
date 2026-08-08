@@ -1,38 +1,38 @@
-const fs = require('fs');
+const fs = require('fs/promises');
+const sharp = require('sharp');
 const { PDFDocument } = require('pdf-lib');
 
 // Convert images to PDF
 async function convertImageToPdf(req, res) {
-  try {
-    const files = req.files;
+  const files = req.files;
 
-    // Check if files exist
+  try {
     if (!files || files.length === 0) {
       return res.status(400).json({ message: 'Please upload at least one image.' });
     }
 
-    // Check file limit
     if (files.length > 50) {
-      cleanUpFiles(files);
+      await cleanUpFiles(files);
       return res.status(400).json({ message: 'Maximum 50 images allowed.' });
     }
 
-    // Create a new PDF document
     const pdfDoc = await PDFDocument.create();
 
-    // Process each image
     for (const file of files) {
-      const imageBytes = fs.readFileSync(file.path);
+      let imageBytes = await fs.readFile(file.path);
       let image;
 
-      // Embed image based on file type
-      if (file.mimetype === 'image/png') {
+      // pdf-lib only supports JPG and PNG, so convert WEBP to PNG first
+      if (file.mimetype === 'image/webp') {
+        imageBytes = await sharp(imageBytes).png().toBuffer();
+        image = await pdfDoc.embedPng(imageBytes);
+      } else if (file.mimetype === 'image/png') {
         image = await pdfDoc.embedPng(imageBytes);
       } else {
         image = await pdfDoc.embedJpg(imageBytes);
       }
 
-      // Add page with image dimensions
+      // Add page matching image size
       const page = pdfDoc.addPage([image.width, image.height]);
       page.drawImage(image, {
         x: 0,
@@ -42,28 +42,28 @@ async function convertImageToPdf(req, res) {
       });
     }
 
-    // Save PDF to buffer
     const pdfBytes = await pdfDoc.save();
 
-    // Clean up temporary files
-    cleanUpFiles(files);
+    await cleanUpFiles(files);
 
-    // Send PDF response
     res.setHeader('Content-Type', 'application/pdf');
     return res.send(Buffer.from(pdfBytes));
   } catch (error) {
-    if (req.files) cleanUpFiles(req.files);
+    console.error('Image to PDF Error:', error.message);
+    if (files) await cleanUpFiles(files);
     return res.status(500).json({ message: 'Error converting images to PDF.' });
   }
 }
 
-// Helper to delete uploaded files
-function cleanUpFiles(files) {
-  files.forEach((file) => {
-    if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+// Delete temporary files safely
+async function cleanUpFiles(files) {
+  for (const file of files) {
+    try {
+      await fs.unlink(file.path);
+    } catch (e) {
+      // File already deleted or doesn't exist
     }
-  });
+  }
 }
 
 module.exports = { convertImageToPdf };

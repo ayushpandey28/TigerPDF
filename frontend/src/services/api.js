@@ -1,17 +1,41 @@
 import axios from 'axios';
 
-// Base URL for the backend API
-const API_BASE_URL = 'https://tigerpdf.onrender.com/api';
+// Use production URL on Vercel, localhost in development
+const API_BASE_URL = import.meta.env.PROD
+  ? 'https://tigerpdf.onrender.com/api'
+  : 'http://localhost:5000/api';
 
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 150000,
+  timeout: 120000,
 });
+
+// Pull error message from backend response when available
+function getErrorMessage(err) {
+  if (err.response && err.response.data) {
+    // Backend may send JSON with a message field
+    if (err.response.data.message) {
+      return err.response.data.message;
+    }
+    // If response is a blob (from responseType: 'blob'), try to read it
+    if (err.response.data instanceof Blob) {
+      return null; // Cannot read blob errors easily, return null
+    }
+  }
+  if (err.code === 'ECONNABORTED') {
+    return 'Request timed out. The server may be waking up — please try again.';
+  }
+  if (err.message === 'Network Error') {
+    return 'Cannot reach the server. Please check your connection and try again.';
+  }
+  return null;
+}
 
 // Convert images to PDF
 export function convertImageToPDF(files) {
   const formData = new FormData();
+
   files.forEach((file) => {
     formData.append('images', file);
   });
@@ -25,6 +49,7 @@ export function convertImageToPDF(files) {
 // Merge multiple PDFs
 export function mergePDFs(files) {
   const formData = new FormData();
+
   files.forEach((file) => {
     formData.append('pdfs', file);
   });
@@ -36,9 +61,11 @@ export function mergePDFs(files) {
 }
 
 // Compress a PDF
-export function compressPDF(file) {
+export function compressPDF(file, level) {
   const formData = new FormData();
+
   formData.append('pdf', file);
+  formData.append('level', level || 'medium');
 
   return api.post('/compress-pdf', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -47,9 +74,11 @@ export function compressPDF(file) {
 }
 
 // Compress an image
-export function compressImage(file) {
+export function compressImage(file, level) {
   const formData = new FormData();
+
   formData.append('image', file);
+  formData.append('level', level || 'medium');
 
   return api.post('/compress-image', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -57,4 +86,5 @@ export function compressImage(file) {
   });
 }
 
+export { getErrorMessage };
 export default api;

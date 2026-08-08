@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+
 const { uploadPdf } = require('../middleware/upload');
 const { compressPdf } = require('../controllers/compressPdf');
 

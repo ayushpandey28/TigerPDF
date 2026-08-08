@@ -3,7 +3,7 @@ import UploadBox from '../../components/UploadBox/UploadBox';
 import Loading from '../../components/Loading/Loading';
 import DownloadButton from '../../components/DownloadButton/DownloadButton';
 import { HiPhotograph, HiX } from 'react-icons/hi';
-import { convertImageToPDF } from '../../services/api';
+import { convertImageToPDF, getErrorMessage } from '../../services/api';
 import './ImageToPDF.css';
 
 function ImageToPDF() {
@@ -41,7 +41,8 @@ function ImageToPDF() {
       const url = URL.createObjectURL(blob);
       setResult(url);
     } catch (err) {
-      setError('Something went wrong. Please try again.');
+      const msg = getErrorMessage(err);
+      setError(msg || 'Something went wrong. Please try again.');
     }
 
     setLoading(false);
@@ -93,7 +94,7 @@ function ImageToPDF() {
         <div className="result-box">
           <p className="result-text">✅ Your PDF is ready!</p>
           <DownloadButton fileUrl={result} fileName="converted.pdf" />
-          <button className="reset-btn" onClick={() => { setFiles([]); setResult(null); }}>
+          <button className="reset-btn" onClick={() => { if (result) URL.revokeObjectURL(result); setFiles([]); setResult(null); }}>
             Convert More Images
           </button>
         </div>

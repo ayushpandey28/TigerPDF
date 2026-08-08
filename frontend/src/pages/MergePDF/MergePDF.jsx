@@ -3,7 +3,7 @@ import UploadBox from '../../components/UploadBox/UploadBox';
 import Loading from '../../components/Loading/Loading';
 import DownloadButton from '../../components/DownloadButton/DownloadButton';
 import { HiDocumentDuplicate, HiX } from 'react-icons/hi';
-import { mergePDFs } from '../../services/api';
+import { mergePDFs, getErrorMessage } from '../../services/api';
 import './MergePDF.css';
 
 function MergePDF() {
@@ -41,7 +41,8 @@ function MergePDF() {
       const url = URL.createObjectURL(blob);
       setResult(url);
     } catch (err) {
-      setError('Something went wrong. Please try again.');
+      const msg = getErrorMessage(err);
+      setError(msg || 'Something went wrong. Please try again.');
     }
 
     setLoading(false);
@@ -93,7 +94,7 @@ function MergePDF() {
         <div className="result-box">
           <p className="result-text">✅ Your merged PDF is ready!</p>
           <DownloadButton fileUrl={result} fileName="merged.pdf" />
-          <button className="reset-btn" onClick={() => { setFiles([]); setResult(null); }}>
+          <button className="reset-btn" onClick={() => { if (result) URL.revokeObjectURL(result); setFiles([]); setResult(null); }}>
             Merge More PDFs
           </button>
         </div>
