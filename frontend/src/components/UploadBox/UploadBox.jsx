@@ -11,6 +11,8 @@ function UploadBox({ accept, multiple, onFilesSelected, label }) {
     if (selected.length > 0) {
       onFilesSelected(selected);
     }
+    // Reset input value so re-selecting the exact same file triggers onChange
+    e.target.value = '';
   }
 
   // Handle drag over

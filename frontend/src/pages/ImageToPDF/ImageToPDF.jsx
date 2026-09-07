@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import UploadBox from '../../components/UploadBox/UploadBox';
 import Loading from '../../components/Loading/Loading';
 import DownloadButton from '../../components/DownloadButton/DownloadButton';
@@ -12,9 +12,26 @@ function ImageToPDF() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
+  // Clean up object URL when component unmounts
+  useEffect(() => {
+    return () => {
+      if (result) {
+        URL.revokeObjectURL(result);
+      }
+    };
+  }, [result]);
+
   // Handle files selected
   function handleFiles(selected) {
-    setFiles([...files, ...selected]);
+    const updated = [...files, ...selected];
+    if (updated.length > 50) {
+      setError('Maximum 50 images allowed.');
+      return;
+    }
+    setFiles(updated);
+    if (result) {
+      URL.revokeObjectURL(result);
+    }
     setResult(null);
     setError('');
   }
@@ -32,16 +49,24 @@ function ImageToPDF() {
       return;
     }
 
+    if (files.length > 50) {
+      setError('Maximum 50 images allowed.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
       const response = await convertImageToPDF(files);
       const blob = new Blob([response.data], { type: 'application/pdf' });
+      if (result) {
+        URL.revokeObjectURL(result);
+      }
       const url = URL.createObjectURL(blob);
       setResult(url);
     } catch (err) {
-      const msg = getErrorMessage(err);
+      const msg = await getErrorMessage(err);
       setError(msg || 'Something went wrong. Please try again.');
     }
 
@@ -94,7 +119,14 @@ function ImageToPDF() {
         <div className="result-box">
           <p className="result-text">✅ Your PDF is ready!</p>
           <DownloadButton fileUrl={result} fileName="converted.pdf" />
-          <button className="reset-btn" onClick={() => { if (result) URL.revokeObjectURL(result); setFiles([]); setResult(null); }}>
+          <button
+            className="reset-btn"
+            onClick={() => {
+              if (result) URL.revokeObjectURL(result);
+              setFiles([]);
+              setResult(null);
+            }}
+          >
             Convert More Images
           </button>
         </div>

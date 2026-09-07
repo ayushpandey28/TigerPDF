@@ -11,16 +11,24 @@ const api = axios.create({
   timeout: 120000,
 });
 
-// Pull error message from backend response when available
-function getErrorMessage(err) {
+// Pull error message from backend response when available (handles JSON or Blob responseType)
+async function getErrorMessage(err) {
   if (err.response && err.response.data) {
-    // Backend may send JSON with a message field
+    // If backend sent JSON with a message field
     if (err.response.data.message) {
       return err.response.data.message;
     }
-    // If response is a blob (from responseType: 'blob'), try to read it
+    // If response is a Blob (from responseType: 'blob'), parse the JSON text from the Blob
     if (err.response.data instanceof Blob) {
-      return null; // Cannot read blob errors easily, return null
+      try {
+        const text = await err.response.data.text();
+        const json = JSON.parse(text);
+        if (json && json.message) {
+          return json.message;
+        }
+      } catch (e) {
+        // Blob is not valid JSON
+      }
     }
   }
   if (err.code === 'ECONNABORTED') {
