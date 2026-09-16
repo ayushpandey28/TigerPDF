@@ -23,6 +23,13 @@ function MergePDF() {
 
   // Handle files selected
   function handleFiles(selected) {
+    // Check individual file sizes
+    const oversized = selected.find((f) => f.size > 20 * 1024 * 1024);
+    if (oversized) {
+      setError(`"${oversized.name}" exceeds the 20 MB limit per file.`);
+      return;
+    }
+
     const updated = [...files, ...selected];
     if (updated.length > 15) {
       setError('Maximum 15 PDF files allowed.');
@@ -31,8 +38,8 @@ function MergePDF() {
     setFiles(updated);
     if (result) {
       URL.revokeObjectURL(result);
+      setResult(null);
     }
-    setResult(null);
     setError('');
   }
 
@@ -97,7 +104,7 @@ function MergePDF() {
       {files.length > 0 && !loading && !result && (
         <div className="file-list">
           {files.map((file, index) => (
-            <div className="file-item" key={index}>
+            <div className="file-item" key={`${file.name}-${file.size}-${index}`}>
               <span className="file-name">{file.name}</span>
               <button className="file-remove" onClick={() => removeFile(index)}>
                 <HiX />

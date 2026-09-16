@@ -20,8 +20,14 @@ async function mergePdf(req, res) {
     const mergedPdf = await PDFDocument.create();
 
     for (const file of files) {
-      const pdfBytes = await fs.readFile(file.path);
-      if (!hasPdfSignature(pdfBytes)) {
+      let pdfBytes = file.buffer;
+      if (!pdfBytes && file.path) {
+        pdfBytes = await fs.readFile(file.path);
+        // Clean up disk file immediately after reading to free container disk space
+        await cleanUpFile(file.path);
+      }
+
+      if (!pdfBytes || !hasPdfSignature(pdfBytes)) {
         await cleanUpFiles(files);
         return res.status(400).json({ message: 'Please upload valid PDF files.' });
       }
@@ -33,8 +39,8 @@ async function mergePdf(req, res) {
         await cleanUpFiles(files);
         return res.status(400).json({ message: 'Please upload valid PDF files.' });
       }
-      const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
 
+      const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
       copiedPages.forEach((page) => {
         mergedPdf.addPage(page);
       });
@@ -42,9 +48,12 @@ async function mergePdf(req, res) {
 
     const pdfBytes = await mergedPdf.save();
 
+    // Clean up any remaining files safely
     await cleanUpFiles(files);
 
     res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdfBytes.length);
+    res.setHeader('Content-Disposition', 'inline; filename="merged.pdf"');
     return res.send(Buffer.from(pdfBytes));
   } catch (error) {
     console.error('Merge PDF Error:', error.message);
@@ -53,13 +62,20 @@ async function mergePdf(req, res) {
   }
 }
 
+// Delete single temporary file safely
+async function cleanUpFile(filePath) {
+  if (!filePath) return;
+  try {
+    await fs.unlink(filePath);
+  } catch (e) {}
+}
+
 // Delete temporary files safely
 async function cleanUpFiles(files) {
+  if (!files || !Array.isArray(files)) return;
   for (const file of files) {
-    try {
-      await fs.unlink(file.path);
-    } catch (e) {
-      // File already deleted or doesn't exist
+    if (file && file.path) {
+      await cleanUpFile(file.path);
     }
   }
 }

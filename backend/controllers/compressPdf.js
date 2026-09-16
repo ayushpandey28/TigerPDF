@@ -14,9 +14,16 @@ async function compressPdf(req, res) {
 
     const level = req.body.level || 'medium';
 
-    // Read PDF file into buffer and clean up temporary disk file
-    const pdfBytes = await fs.readFile(file.path);
-    await cleanUpFile(file.path);
+    // Support both memory buffer (zero disk I/O) and disk storage fallback
+    let pdfBytes;
+    if (file.buffer) {
+      pdfBytes = file.buffer;
+    } else if (file.path) {
+      pdfBytes = await fs.readFile(file.path);
+      await cleanUpFile(file.path);
+    } else {
+      return res.status(400).json({ message: 'No PDF file data received.' });
+    }
 
     if (!hasPdfSignature(pdfBytes)) {
       return res.status(400).json({ message: 'Please upload a valid PDF file.' });
@@ -63,8 +70,10 @@ async function compressPdf(req, res) {
 
         if (subtype === PDFName.of('Image')) {
           const filter = dict.get(PDFName.of('Filter'));
-          const width = dict.get(PDFName.of('Width'))?.numberValue || 0;
-          const height = dict.get(PDFName.of('Height'))?.numberValue || 0;
+          const widthVal = pdfDoc.context.lookup(dict.get(PDFName.of('Width')));
+          const heightVal = pdfDoc.context.lookup(dict.get(PDFName.of('Height')));
+          const width = widthVal?.numberValue || widthVal?.asNumber?.() || 0;
+          const height = heightVal?.numberValue || heightVal?.asNumber?.() || 0;
 
           const isJpeg = filter === PDFName.of('DCTDecode') || (Array.isArray(filter?.array) && filter.array.includes(PDFName.of('DCTDecode')));
 
@@ -78,17 +87,19 @@ async function compressPdf(req, res) {
                 pipeline = pipeline.resize({ width: maxWidth, withoutEnlargement: true });
               }
 
-              const compressedImgBuf = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
+              // Use fast standard libjpeg-turbo (mozjpeg: false) to prevent CPU starvation on deployed containers
+              const { data: compressedImgBuf, info } = await pipeline
+                .jpeg({ quality, mozjpeg: false })
+                .toBuffer({ resolveWithObject: true });
 
               // Replace image stream only if output size is actually smaller
               if (compressedImgBuf.length < origBuf.length) {
                 object.contents = new Uint8Array(compressedImgBuf);
                 dict.set(PDFName.of('Length'), PDFNumber.of(compressedImgBuf.length));
 
-                if (width > maxWidth) {
-                  const meta = await sharp(compressedImgBuf).metadata();
-                  dict.set(PDFName.of('Width'), PDFNumber.of(meta.width || width));
-                  dict.set(PDFName.of('Height'), PDFNumber.of(meta.height || height));
+                if (width > maxWidth && info && info.width) {
+                  dict.set(PDFName.of('Width'), PDFNumber.of(info.width));
+                  dict.set(PDFName.of('Height'), PDFNumber.of(info.height));
                 }
               }
             } catch (err) {
@@ -102,17 +113,23 @@ async function compressPdf(req, res) {
     // Save PDF with object streams enabled for structural compression
     const compressedBytes = await pdfDoc.save({ useObjectStreams: true });
 
+    // Never return a file larger than what the user uploaded
+    const finalBytes = compressedBytes.length < pdfBytes.length ? compressedBytes : pdfBytes;
+
     res.setHeader('Content-Type', 'application/pdf');
-    return res.send(Buffer.from(compressedBytes));
+    res.setHeader('Content-Length', finalBytes.length);
+    res.setHeader('Content-Disposition', 'inline; filename="compressed.pdf"');
+    return res.send(Buffer.from(finalBytes));
   } catch (error) {
     console.error('Compress PDF Error:', error.message);
-    if (file) await cleanUpFile(file.path);
+    if (file && file.path) await cleanUpFile(file.path);
     return res.status(500).json({ message: 'Error compressing PDF file.' });
   }
 }
 
 // Delete temporary file safely
 async function cleanUpFile(filePath) {
+  if (!filePath) return;
   try {
     await fs.unlink(filePath);
   } catch (e) {

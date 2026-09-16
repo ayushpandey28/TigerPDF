@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar/Navbar';
 import Footer from './components/Footer/Footer';
@@ -8,8 +8,14 @@ import MergePDF from './pages/MergePDF/MergePDF';
 import CompressPDF from './pages/CompressPDF/CompressPDF';
 import CompressImage from './pages/CompressImage/CompressImage';
 import NotFound from './pages/NotFound/NotFound';
+import { pingServer } from './services/api';
 
 function App() {
+  // Pre-warm backend container (e.g. Render free tier) on page load
+  useEffect(() => {
+    pingServer();
+  }, []);
+
   return (
     <div className="app">
       <Navbar />

@@ -7,11 +7,30 @@ function UploadBox({ accept, multiple, onFilesSelected, label }) {
   const supportedFormats = accept === '.pdf' ? 'PDF files' : 'JPG, PNG, or WEBP';
   const selectionLimit = multiple ? 'You can add multiple files.' : 'One file at a time.';
 
+  // Validate file against accepted pattern
+  function isAcceptedFile(file) {
+    if (!accept) return true;
+    const name = (file.name || '').toLowerCase();
+    const type = (file.type || '').toLowerCase();
+
+    if (accept === '.pdf') {
+      return name.endsWith('.pdf') || type === 'application/pdf';
+    }
+    if (accept === 'image/*' || accept.includes('image')) {
+      return type.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(name);
+    }
+    return true;
+  }
+
   // Handle file selection from input
   function handleFileChange(e) {
-    const selected = Array.from(e.target.files);
+    let selected = Array.from(e.target.files);
     if (selected.length > 0) {
-      onFilesSelected(selected);
+      if (!multiple) selected = [selected[0]];
+      const valid = selected.filter(isAcceptedFile);
+      if (valid.length > 0) {
+        onFilesSelected(valid);
+      }
     }
     // Reset input value so re-selecting the exact same file triggers onChange
     e.target.value = '';
@@ -32,9 +51,13 @@ function UploadBox({ accept, multiple, onFilesSelected, label }) {
   function handleDrop(e) {
     e.preventDefault();
     setIsDragging(false);
-    const dropped = Array.from(e.dataTransfer.files);
+    let dropped = Array.from(e.dataTransfer.files);
     if (dropped.length > 0) {
-      onFilesSelected(dropped);
+      if (!multiple) dropped = [dropped[0]];
+      const valid = dropped.filter(isAcceptedFile);
+      if (valid.length > 0) {
+        onFilesSelected(valid);
+      }
     }
   }
 

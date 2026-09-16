@@ -12,42 +12,39 @@ function CompressImage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-
-  // Compression level
   const [level, setLevel] = useState('medium');
 
-  // Clean up object URL when component unmounts
+  // Clean up object URLs when component unmounts
   useEffect(() => {
     return () => {
-      if (result) {
-        URL.revokeObjectURL(result);
-      }
+      if (result) URL.revokeObjectURL(result);
+      if (preview) URL.revokeObjectURL(preview);
     };
-  }, [result]);
+  }, [result, preview]);
 
   // Handle file selected
   function handleFiles(selected) {
     const image = selected[0];
+    if (!image) return;
 
-    if (!image) {
+    if (image.size > 20 * 1024 * 1024) {
+      setError('Image is larger than the 20 MB limit.');
       return;
     }
 
     setFile(image);
     if (result) {
       URL.revokeObjectURL(result);
+      setResult(null);
     }
-    setResult(null);
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
     setError('');
 
-    // Create preview
-    const reader = new FileReader();
-
-    reader.onload = function (e) {
-      setPreview(e.target.result);
-    };
-
-    reader.readAsDataURL(image);
+    // Use lightweight object URL instead of base64
+    const previewUrl = URL.createObjectURL(image);
+    setPreview(previewUrl);
   }
 
   // Compress image
@@ -62,19 +59,15 @@ function CompressImage() {
 
     try {
       const response = await compressImage(file, level);
-
       const blob = new Blob(
         [response.data],
-        {
-          type: response.headers['content-type'] || file.type,
-        }
+        { type: response.headers['content-type'] || file.type }
       );
 
       if (result) {
         URL.revokeObjectURL(result);
       }
       const url = URL.createObjectURL(blob);
-
       setResult(url);
     } catch (err) {
       console.error(err);

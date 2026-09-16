@@ -20,8 +20,13 @@ async function convertImageToPdf(req, res) {
     const pdfDoc = await PDFDocument.create();
 
     for (const file of files) {
-      let imageBytes = await fs.readFile(file.path);
-      let image;
+      let imageBytes = file.buffer;
+      if (!imageBytes && file.path) {
+        imageBytes = await fs.readFile(file.path);
+        // Clean up immediately after reading to free disk space
+        await cleanUpFile(file.path);
+      }
+
       const imageFormat = await getImageFormat(imageBytes);
 
       if (!imageFormat) {
@@ -29,17 +34,24 @@ async function convertImageToPdf(req, res) {
         return res.status(400).json({ message: 'Please upload valid JPG, PNG or WEBP images.' });
       }
 
-      // pdf-lib only supports JPG and PNG, so convert WEBP to PNG first
+      let image;
       if (imageFormat === 'webp') {
-        imageBytes = await sharp(imageBytes).png().toBuffer();
-        image = await pdfDoc.embedPng(imageBytes);
+        // Check if image has transparency; if not, convert to JPEG for 3x faster embedding and smaller PDF size
+        const meta = await sharp(imageBytes).metadata();
+        if (meta.hasAlpha) {
+          imageBytes = await sharp(imageBytes).png().toBuffer();
+          image = await pdfDoc.embedPng(imageBytes);
+        } else {
+          imageBytes = await sharp(imageBytes).jpeg({ quality: 85 }).toBuffer();
+          image = await pdfDoc.embedJpg(imageBytes);
+        }
       } else if (imageFormat === 'png') {
         image = await pdfDoc.embedPng(imageBytes);
       } else {
         image = await pdfDoc.embedJpg(imageBytes);
       }
 
-      // Add page matching image size
+      // Add page matching image dimensions
       const page = pdfDoc.addPage([image.width, image.height]);
       page.drawImage(image, {
         x: 0,
@@ -51,9 +63,12 @@ async function convertImageToPdf(req, res) {
 
     const pdfBytes = await pdfDoc.save();
 
+    // Ensure any remaining files are cleaned
     await cleanUpFiles(files);
 
     res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdfBytes.length);
+    res.setHeader('Content-Disposition', 'inline; filename="converted.pdf"');
     return res.send(Buffer.from(pdfBytes));
   } catch (error) {
     console.error('Image to PDF Error:', error.message);
@@ -62,13 +77,20 @@ async function convertImageToPdf(req, res) {
   }
 }
 
+// Delete single temporary file safely
+async function cleanUpFile(filePath) {
+  if (!filePath) return;
+  try {
+    await fs.unlink(filePath);
+  } catch (e) {}
+}
+
 // Delete temporary files safely
 async function cleanUpFiles(files) {
+  if (!files || !Array.isArray(files)) return;
   for (const file of files) {
-    try {
-      await fs.unlink(file.path);
-    } catch (e) {
-      // File already deleted or doesn't exist
+    if (file && file.path) {
+      await cleanUpFile(file.path);
     }
   }
 }

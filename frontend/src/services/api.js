@@ -13,26 +13,45 @@ const api = axios.create({
   timeout: 120000,
 });
 
-// Pull error message from backend response when available (handles JSON or Blob responseType)
+// Warm up free-tier backend (e.g. Render) in background
+export async function pingServer() {
+  try {
+    await api.get('/health', { timeout: 20000 });
+  } catch (e) {
+    // Ignore ping failure; subsequent user actions will proceed normally
+  }
+}
+
+// Pull error message from backend response when available (handles JSON, Blob, and proxy errors)
 async function getErrorMessage(err) {
-  if (err.response && err.response.data) {
-    // If backend sent JSON with a message field
-    if (err.response.data.message) {
-      return err.response.data.message;
+  if (err.response) {
+    if (err.response.status === 413) {
+      return 'The uploaded file is too large. Maximum size is 20 MB per file.';
     }
-    // If response is a Blob (from responseType: 'blob'), parse the JSON text from the Blob
-    if (err.response.data instanceof Blob) {
-      try {
-        const text = await err.response.data.text();
-        const json = JSON.parse(text);
-        if (json && json.message) {
-          return json.message;
+    if (err.response.status === 504 || err.response.status === 502) {
+      return 'The server took too long to respond. The free-tier server may be waking up — please try again in a few moments.';
+    }
+
+    if (err.response.data) {
+      // If backend sent JSON with a message field
+      if (typeof err.response.data === 'object' && !(err.response.data instanceof Blob) && err.response.data.message) {
+        return err.response.data.message;
+      }
+      // If response is a Blob (from responseType: 'blob'), parse the JSON text from the Blob
+      if (err.response.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json && json.message) {
+            return json.message;
+          }
+        } catch (e) {
+          // Blob is not valid JSON
         }
-      } catch (e) {
-        // Blob is not valid JSON
       }
     }
   }
+
   if (err.code === 'ECONNABORTED') {
     return 'Request timed out. The server may be waking up — please try again.';
   }
@@ -50,8 +69,8 @@ export function convertImageToPDF(files) {
     formData.append('images', file);
   });
 
+  // Let Axios and the browser automatically set the correct multipart/form-data boundary
   return api.post('/image-to-pdf', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     responseType: 'blob',
   });
 }
@@ -64,8 +83,8 @@ export function mergePDFs(files) {
     formData.append('pdfs', file);
   });
 
+  // Let Axios and the browser automatically set the correct multipart/form-data boundary
   return api.post('/merge-pdf', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     responseType: 'blob',
   });
 }
@@ -77,8 +96,8 @@ export function compressPDF(file, level) {
   formData.append('pdf', file);
   formData.append('level', level || 'medium');
 
+  // Let Axios and the browser automatically set the correct multipart/form-data boundary
   return api.post('/compress-pdf', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     responseType: 'blob',
   });
 }
@@ -90,8 +109,8 @@ export function compressImage(file, level) {
   formData.append('image', file);
   formData.append('level', level || 'medium');
 
+  // Let Axios and the browser automatically set the correct multipart/form-data boundary
   return api.post('/compress-image', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     responseType: 'blob',
   });
 }

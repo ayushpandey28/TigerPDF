@@ -11,8 +11,6 @@ function CompressPDF() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-
-  // Compression level
   const [level, setLevel] = useState('medium');
 
   // Clean up object URL when component unmounts
@@ -26,11 +24,19 @@ function CompressPDF() {
 
   // Handle file selected
   function handleFiles(selected) {
-    setFile(selected[0]);
+    const pdfFile = selected[0];
+    if (!pdfFile) return;
+
+    if (pdfFile.size > 20 * 1024 * 1024) {
+      setError('PDF file is larger than the 20 MB limit.');
+      return;
+    }
+
+    setFile(pdfFile);
     if (result) {
       URL.revokeObjectURL(result);
+      setResult(null);
     }
-    setResult(null);
     setError('');
   }
 
@@ -46,17 +52,12 @@ function CompressPDF() {
 
     try {
       const response = await compressPDF(file, level);
-
-      const blob = new Blob(
-        [response.data],
-        { type: 'application/pdf' }
-      );
+      const blob = new Blob([response.data], { type: 'application/pdf' });
 
       if (result) {
         URL.revokeObjectURL(result);
       }
       const url = URL.createObjectURL(blob);
-
       setResult(url);
 
     } catch (err) {

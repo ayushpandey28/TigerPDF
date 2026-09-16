@@ -13,9 +13,17 @@ async function compressImage(req, res) {
 
     const level = req.body.level || 'medium';
 
-    // Read image into buffer and delete temporary disk file immediately to avoid Windows file locks
-    const inputBuffer = await fs.readFile(file.path);
-    await cleanUpFile(file.path);
+    // Support both memory buffer (zero disk I/O) and disk storage fallback
+    let inputBuffer;
+    if (file.buffer) {
+      inputBuffer = file.buffer;
+    } else if (file.path) {
+      inputBuffer = await fs.readFile(file.path);
+      await cleanUpFile(file.path);
+    } else {
+      return res.status(400).json({ message: 'No image file data received.' });
+    }
+
     const imageFormat = await getImageFormat(inputBuffer);
 
     if (!imageFormat) {
@@ -37,8 +45,16 @@ async function compressImage(req, res) {
 
     // Compress based on format using memory buffer
     if (imageFormat === 'png') {
+      // Use palette quantization for lower quality levels to actually shrink PNG size
+      const pngOptions = {
+        compressionLevel: 6,
+        quality: quality,
+      };
+      if (level === 'low' || level === 'medium') {
+        pngOptions.palette = true;
+      }
       compressedBuffer = await sharp(inputBuffer)
-        .png({ compressionLevel: 6, quality: quality })
+        .png(pngOptions)
         .toBuffer();
       outputType = 'image/png';
 
@@ -49,23 +65,32 @@ async function compressImage(req, res) {
       outputType = 'image/webp';
 
     } else {
+      // Fast standard libjpeg-turbo (mozjpeg: false) prevents CPU spikes on cloud containers
       compressedBuffer = await sharp(inputBuffer)
-        .jpeg({ quality: quality, mozjpeg: true })
+        .jpeg({ quality: quality, mozjpeg: false })
         .toBuffer();
       outputType = 'image/jpeg';
     }
 
+    // If re-compressing didn't reduce size on high/medium, prefer the original
+    const finalBuffer = (compressedBuffer.length < inputBuffer.length || level === 'low')
+      ? compressedBuffer
+      : inputBuffer;
+
     res.setHeader('Content-Type', outputType);
-    return res.send(compressedBuffer);
+    res.setHeader('Content-Length', finalBuffer.length);
+    res.setHeader('Content-Disposition', 'inline; filename="compressed-image"');
+    return res.send(finalBuffer);
   } catch (error) {
     console.error('Compress Image Error:', error.message);
-    if (file) await cleanUpFile(file.path);
+    if (file && file.path) await cleanUpFile(file.path);
     return res.status(500).json({ message: 'Error compressing image file.' });
   }
 }
 
 // Delete temporary file safely
 async function cleanUpFile(filePath) {
+  if (!filePath) return;
   try {
     await fs.unlink(filePath);
   } catch (e) {
