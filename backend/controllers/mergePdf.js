@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const { PDFDocument } = require('pdf-lib');
+const { hasPdfSignature } = require('../utils/fileValidation');
 
 // Merge multiple PDFs into one
 async function mergePdf(req, res) {
@@ -20,7 +21,18 @@ async function mergePdf(req, res) {
 
     for (const file of files) {
       const pdfBytes = await fs.readFile(file.path);
-      const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      if (!hasPdfSignature(pdfBytes)) {
+        await cleanUpFiles(files);
+        return res.status(400).json({ message: 'Please upload valid PDF files.' });
+      }
+
+      let pdfDoc;
+      try {
+        pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      } catch (error) {
+        await cleanUpFiles(files);
+        return res.status(400).json({ message: 'Please upload valid PDF files.' });
+      }
       const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
 
       copiedPages.forEach((page) => {

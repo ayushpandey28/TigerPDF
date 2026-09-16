@@ -1,9 +1,11 @@
 import axios from 'axios';
 
-// Use production URL on Vercel, localhost in development
-const API_BASE_URL = import.meta.env.PROD
-  ? 'https://tigerpdf.onrender.com/api'
-  : 'http://localhost:5000/api';
+// Allow deployments and previews to supply their backend without changing code.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (
+  import.meta.env.PROD
+    ? 'https://tigerpdf.onrender.com/api'
+    : 'http://localhost:5000/api'
+);
 
 // Create axios instance
 const api = axios.create({

@@ -77,8 +77,7 @@ function CompressPDF() {
         <div
           className="page-icon"
           style={{
-            background:
-              'linear-gradient(135deg, #10B981, #059669)'
+            background: '#247a64'
           }}
         >
           <HiCollection />
@@ -188,7 +187,7 @@ function CompressPDF() {
         <div className="result-box">
 
           <p className="result-text">
-            ✅ Your compressed PDF is ready!
+            Your compressed PDF is ready.
           </p>
 
           <DownloadButton

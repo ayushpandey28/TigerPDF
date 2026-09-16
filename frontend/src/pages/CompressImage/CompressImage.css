@@ -1,70 +1,9 @@
-/* CompressImage uses shared page styles from ImageToPDF.css */
-
-.image-preview {
-  width: 100%;
-  max-height: 300px;
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-
-.image-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.file-size {
-  font-size: 0.8rem;
-  color: var(--accent);
-  font-weight: 500;
-}
-
-/* Compression Options */
-
-.compression-options {
-  margin: 20px 0;
-}
-
-.compression-options h3 {
-  margin-bottom: 12px;
-}
-
-.compression-buttons {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.compression-option {
-  flex: 1;
-  min-width: 140px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.04);
-  color: inherit;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.compression-option:hover {
-  border-color: var(--accent);
-}
-
-.compression-option.active {
-  border-color: var(--accent);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.compression-option strong {
-  display: block;
-  margin-bottom: 5px;
-}
-
-.compression-option span {
-  font-size: 0.8rem;
-  opacity: 0.7;
-}
+.image-preview { background: #0c1118; border: 1px solid var(--border); border-radius: var(--radius); max-height: 300px; overflow: hidden; }
+.image-preview img { height: 100%; max-height: 300px; object-fit: contain; width: 100%; }
+.file-size { color: #8bb6ff; font-size: .82rem; white-space: nowrap; }
+.compression-options { margin: 14px 0; }
+.compression-options h3 { font-size: .93rem; margin-bottom: 10px; }
+.compression-buttons { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); }
+.compression-option { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); padding: 13px 12px; text-align: left; transition: background var(--transition), border-color var(--transition); }
+.compression-option:hover { border-color: #5b7492; }.compression-option.active { background: #1b2b43; border-color: #5285dd; color: var(--text); }.compression-option strong, .compression-option span { display: block; }.compression-option strong { font-size: .9rem; margin-bottom: 3px; }.compression-option span { font-size: .77rem; }
+@media (max-width: 600px) { .compression-buttons { grid-template-columns: 1fr; } }

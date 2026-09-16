@@ -1,52 +1,29 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { HiArrowRight } from 'react-icons/hi';
+import { HiArrowRight, HiCheck } from 'react-icons/hi';
 import './Hero.css';
 
 function Hero() {
   return (
     <section className="hero">
-      {/* Background glow effects */}
-      <div className="hero-glow hero-glow-1"></div>
-      <div className="hero-glow hero-glow-2"></div>
-
       <div className="hero-content">
-        <span className="hero-badge">✨ Free & Fast PDF Tools</span>
-
-        <h1 className="hero-title">
-          All Your <span className="gradient-text">PDF Tools</span> in One Place
-        </h1>
-
-        <p className="hero-subtitle">
-          Convert images to PDF, merge documents, compress files — all for free,
-          right in your browser. No signup required.
-        </p>
+        <span className="hero-eyebrow">TigerPDF tools</span>
+        <h1 className="hero-title">Simple tools for everyday PDF work.</h1>
+        <p className="hero-subtitle">Convert images, combine PDFs, and reduce file sizes without an account.</p>
 
         <div className="hero-buttons">
           <Link to="/image-to-pdf" className="btn-primary">
-            Get Started <HiArrowRight />
+            Choose a tool <HiArrowRight />
           </Link>
           <a href="#tools" className="btn-secondary">
-            View Tools
+            View all tools
           </a>
         </div>
 
-        {/* Stats */}
-        <div className="hero-stats">
-          <div className="stat">
-            <span className="stat-number">4</span>
-            <span className="stat-label">Free Tools</span>
-          </div>
-          <div className="stat-divider"></div>
-          <div className="stat">
-            <span className="stat-number">100%</span>
-            <span className="stat-label">Free Forever</span>
-          </div>
-          <div className="stat-divider"></div>
-          <div className="stat">
-            <span className="stat-number">Fast</span>
-            <span className="stat-label">Processing</span>
-          </div>
+        <div className="hero-notes">
+          <span><HiCheck /> Free to use</span>
+          <span><HiCheck /> No signup</span>
+          <span><HiCheck /> Files processed securely</span>
         </div>
       </div>
     </section>

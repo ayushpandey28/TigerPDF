@@ -76,7 +76,7 @@ function MergePDF() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <div className="page-icon" style={{ background: 'linear-gradient(135deg, #06B6D4, #0891B2)' }}>
+        <div className="page-icon" style={{ background: '#1683a5' }}>
           <HiDocumentDuplicate size={28} />
         </div>
         <h1>Merge PDF</h1>
@@ -117,7 +117,7 @@ function MergePDF() {
       {/* Result */}
       {result && (
         <div className="result-box">
-          <p className="result-text">✅ Your merged PDF is ready!</p>
+          <p className="result-text">Your merged PDF is ready.</p>
           <DownloadButton fileUrl={result} fileName="merged.pdf" />
           <button
             className="reset-btn"

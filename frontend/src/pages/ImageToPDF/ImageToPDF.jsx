@@ -76,7 +76,7 @@ function ImageToPDF() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <div className="page-icon" style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED)' }}>
+        <div className="page-icon" style={{ background: '#2f6fed' }}>
           <HiPhotograph size={28} />
         </div>
         <h1>Image to PDF</h1>
@@ -117,7 +117,7 @@ function ImageToPDF() {
       {/* Result */}
       {result && (
         <div className="result-box">
-          <p className="result-text">✅ Your PDF is ready!</p>
+          <p className="result-text">Your PDF is ready.</p>
           <DownloadButton fileUrl={result} fileName="converted.pdf" />
           <button
             className="reset-btn"

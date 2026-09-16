@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const sharp = require('sharp');
 const { PDFDocument } = require('pdf-lib');
+const { getImageFormat } = require('../utils/fileValidation');
 
 // Convert images to PDF
 async function convertImageToPdf(req, res) {
@@ -21,12 +22,18 @@ async function convertImageToPdf(req, res) {
     for (const file of files) {
       let imageBytes = await fs.readFile(file.path);
       let image;
+      const imageFormat = await getImageFormat(imageBytes);
+
+      if (!imageFormat) {
+        await cleanUpFiles(files);
+        return res.status(400).json({ message: 'Please upload valid JPG, PNG or WEBP images.' });
+      }
 
       // pdf-lib only supports JPG and PNG, so convert WEBP to PNG first
-      if (file.mimetype === 'image/webp') {
+      if (imageFormat === 'webp') {
         imageBytes = await sharp(imageBytes).png().toBuffer();
         image = await pdfDoc.embedPng(imageBytes);
-      } else if (file.mimetype === 'image/png') {
+      } else if (imageFormat === 'png') {
         image = await pdfDoc.embedPng(imageBytes);
       } else {
         image = await pdfDoc.embedJpg(imageBytes);

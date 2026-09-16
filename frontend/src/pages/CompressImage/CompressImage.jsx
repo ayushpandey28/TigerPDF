@@ -94,8 +94,7 @@ function CompressImage() {
         <div
           className="page-icon"
           style={{
-            background:
-              'linear-gradient(135deg, #F59E0B, #D97706)',
+            background: '#c66a2c',
           }}
         >
           <HiColorSwatch />
@@ -214,7 +213,7 @@ function CompressImage() {
         <div className="result-box">
 
           <p className="result-text">
-            ✅ Your compressed image is ready!
+            Your compressed image is ready.
           </p>
 
           <DownloadButton

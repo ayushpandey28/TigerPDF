@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const sharp = require('sharp');
+const { getImageFormat } = require('../utils/fileValidation');
 
 // Compress image file
 async function compressImage(req, res) {
@@ -15,6 +16,11 @@ async function compressImage(req, res) {
     // Read image into buffer and delete temporary disk file immediately to avoid Windows file locks
     const inputBuffer = await fs.readFile(file.path);
     await cleanUpFile(file.path);
+    const imageFormat = await getImageFormat(inputBuffer);
+
+    if (!imageFormat) {
+      return res.status(400).json({ message: 'Please upload a valid JPG, PNG or WEBP image.' });
+    }
 
     // Set quality based on compression level
     let quality;
@@ -30,13 +36,13 @@ async function compressImage(req, res) {
     let outputType;
 
     // Compress based on format using memory buffer
-    if (file.mimetype === 'image/png') {
+    if (imageFormat === 'png') {
       compressedBuffer = await sharp(inputBuffer)
         .png({ compressionLevel: 6, quality: quality })
         .toBuffer();
       outputType = 'image/png';
 
-    } else if (file.mimetype === 'image/webp') {
+    } else if (imageFormat === 'webp') {
       compressedBuffer = await sharp(inputBuffer)
         .webp({ quality: quality })
         .toBuffer();

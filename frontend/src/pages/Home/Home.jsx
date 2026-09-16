@@ -12,28 +12,28 @@ function Home() {
       title: 'Image to PDF',
       description: 'Convert your images (JPG, PNG) into a single PDF document quickly and easily.',
       link: '/image-to-pdf',
-      color: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+      color: '#2f6fed',
     },
     {
       icon: <HiDocumentDuplicate size={24} />,
       title: 'Merge PDF',
       description: 'Combine multiple PDF files into one document in just a few clicks.',
       link: '/merge-pdf',
-      color: 'linear-gradient(135deg, #06B6D4, #0891B2)',
+      color: '#1683a5',
     },
     {
       icon: <HiCollection size={24} />,
       title: 'Compress PDF',
       description: 'Reduce the file size of your PDF without losing quality.',
       link: '/compress-pdf',
-      color: 'linear-gradient(135deg, #10B981, #059669)',
+      color: '#247a64',
     },
     {
       icon: <HiColorSwatch size={24} />,
       title: 'Compress Image',
       description: 'Shrink your image file size while keeping great quality.',
       link: '/compress-image',
-      color: 'linear-gradient(135deg, #F59E0B, #D97706)',
+      color: '#c66a2c',
     },
   ];
 
@@ -44,9 +44,9 @@ function Home() {
       {/* Tools Section */}
       <section className="tools-section" id="tools">
         <div className="tools-container">
-          <h2 className="section-title">Our Tools</h2>
+          <h2 className="section-title">Choose a tool</h2>
           <p className="section-subtitle">
-            Simple, fast and free tools to handle all your PDF needs.
+            Start with the task you need to finish today.
           </p>
 
           <div className="tools-grid">
@@ -67,7 +67,7 @@ function Home() {
       {/* How It Works */}
       <section className="how-section">
         <div className="how-container">
-          <h2 className="section-title">How It Works</h2>
+          <h2 className="section-title">How it works</h2>
           <p className="section-subtitle">
             Three simple steps to get your work done.
           </p>

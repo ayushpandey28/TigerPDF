@@ -4,6 +4,8 @@ import './UploadBox.css';
 
 function UploadBox({ accept, multiple, onFilesSelected, label }) {
   const [isDragging, setIsDragging] = useState(false);
+  const supportedFormats = accept === '.pdf' ? 'PDF files' : 'JPG, PNG, or WEBP';
+  const selectionLimit = multiple ? 'You can add multiple files.' : 'One file at a time.';
 
   // Handle file selection from input
   function handleFileChange(e) {
@@ -45,7 +47,7 @@ function UploadBox({ accept, multiple, onFilesSelected, label }) {
     >
       <HiCloudUpload className="upload-icon" />
       <p className="upload-text">{label || 'Drag & drop your files here'}</p>
-      <p className="upload-or">or</p>
+      <p className="upload-help">{supportedFormats} · Up to 20 MB per file</p>
       <label className="upload-btn">
         Browse Files
         <input
@@ -56,6 +58,7 @@ function UploadBox({ accept, multiple, onFilesSelected, label }) {
           hidden
         />
       </label>
+      <p className="upload-limit">{selectionLimit}</p>
     </div>
   );
 }

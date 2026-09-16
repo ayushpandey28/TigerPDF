@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const sharp = require('sharp');
 const { PDFDocument, PDFName, PDFRawStream, PDFNumber } = require('pdf-lib');
+const { hasPdfSignature } = require('../utils/fileValidation');
 
 // Compress PDF file by recompressing embedded images and optimizing PDF structure
 async function compressPdf(req, res) {
@@ -17,7 +18,16 @@ async function compressPdf(req, res) {
     const pdfBytes = await fs.readFile(file.path);
     await cleanUpFile(file.path);
 
-    const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    if (!hasPdfSignature(pdfBytes)) {
+      return res.status(400).json({ message: 'Please upload a valid PDF file.' });
+    }
+
+    let pdfDoc;
+    try {
+      pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    } catch (error) {
+      return res.status(400).json({ message: 'Please upload a valid PDF file.' });
+    }
 
     // Set compression presets based on selected level
     let quality;
