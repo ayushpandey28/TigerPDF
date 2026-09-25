@@ -3,7 +3,6 @@ const sharp = require('sharp');
 const { PDFDocument, PDFName, PDFRawStream, PDFNumber } = require('pdf-lib');
 const { hasPdfSignature } = require('../utils/fileValidation');
 
-// Compress PDF file by recompressing embedded images and optimizing PDF structure
 async function compressPdf(req, res) {
   const file = req.file;
 
@@ -14,13 +13,12 @@ async function compressPdf(req, res) {
 
     const level = req.body.level || 'medium';
 
-    // Support both memory buffer (zero disk I/O) and disk storage fallback
     let pdfBytes;
     if (file.buffer) {
       pdfBytes = file.buffer;
     } else if (file.path) {
       pdfBytes = await fs.readFile(file.path);
-      await cleanUpFile(file.path);
+      await fs.unlink(file.path).catch(() => {});
     } else {
       return res.status(400).json({ message: 'No PDF file data received.' });
     }
@@ -36,21 +34,8 @@ async function compressPdf(req, res) {
       return res.status(400).json({ message: 'Please upload a valid PDF file.' });
     }
 
-    // Set compression presets based on selected level
-    let quality;
-    let maxWidth;
-
-    if (level === 'high') {
-      quality = 80;
-      maxWidth = 2000;
-    } else if (level === 'low' || level === 'small') {
-      quality = 45;
-      maxWidth = 1000;
-    } else {
-      // Default to medium
-      quality = 60;
-      maxWidth = 1400;
-    }
+    const quality = level === 'high' ? 80 : (level === 'low' || level === 'small') ? 45 : 60;
+    const maxWidth = level === 'high' ? 2000 : (level === 'low' || level === 'small') ? 1000 : 1400;
 
     // Strip document metadata on medium and low compression levels
     if (level === 'medium' || level === 'low' || level === 'small') {
@@ -62,7 +47,7 @@ async function compressPdf(req, res) {
       pdfDoc.setCreator('');
     }
 
-    // Process embedded raster images inside PDF object streams
+    // Recompress embedded images in PDF streams
     for (const [ref, object] of pdfDoc.context.enumerateIndirectObjects()) {
       if (object instanceof PDFRawStream) {
         const dict = object.dict;
@@ -82,38 +67,32 @@ async function compressPdf(req, res) {
               const origBuf = Buffer.from(object.contents);
               let pipeline = sharp(origBuf);
 
-              // Resize if image width exceeds max width threshold
               if (width > maxWidth) {
                 pipeline = pipeline.resize({ width: maxWidth, withoutEnlargement: true });
               }
 
-              // Use fast standard libjpeg-turbo (mozjpeg: false) to prevent CPU starvation on deployed containers
               const { data: compressedImgBuf, info } = await pipeline
                 .jpeg({ quality, mozjpeg: false })
                 .toBuffer({ resolveWithObject: true });
 
-              // Replace image stream only if output size is actually smaller
               if (compressedImgBuf.length < origBuf.length) {
                 object.contents = new Uint8Array(compressedImgBuf);
                 dict.set(PDFName.of('Length'), PDFNumber.of(compressedImgBuf.length));
 
-                if (width > maxWidth && info && info.width) {
+                if (width > maxWidth && info?.width) {
                   dict.set(PDFName.of('Width'), PDFNumber.of(info.width));
                   dict.set(PDFName.of('Height'), PDFNumber.of(info.height));
                 }
               }
             } catch (err) {
-              // Ignore corrupted or unparseable individual image streams
+              // Skip streams that sharp cannot process
             }
           }
         }
       }
     }
 
-    // Save PDF with object streams enabled for structural compression
     const compressedBytes = await pdfDoc.save({ useObjectStreams: true });
-
-    // Never return a file larger than what the user uploaded
     const finalBytes = compressedBytes.length < pdfBytes.length ? compressedBytes : pdfBytes;
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -122,18 +101,8 @@ async function compressPdf(req, res) {
     return res.send(Buffer.from(finalBytes));
   } catch (error) {
     console.error('Compress PDF Error:', error.message);
-    if (file && file.path) await cleanUpFile(file.path);
+    if (file?.path) await fs.unlink(file.path).catch(() => {});
     return res.status(500).json({ message: 'Error compressing PDF file.' });
-  }
-}
-
-// Delete temporary file safely
-async function cleanUpFile(filePath) {
-  if (!filePath) return;
-  try {
-    await fs.unlink(filePath);
-  } catch (e) {
-    // File already deleted or doesn't exist
   }
 }
 

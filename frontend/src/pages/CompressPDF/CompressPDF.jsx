@@ -13,16 +13,12 @@ function CompressPDF() {
   const [error, setError] = useState('');
   const [level, setLevel] = useState('medium');
 
-  // Clean up object URL when component unmounts
   useEffect(() => {
     return () => {
-      if (result) {
-        URL.revokeObjectURL(result);
-      }
+      if (result) URL.revokeObjectURL(result);
     };
   }, [result]);
 
-  // Handle file selected
   function handleFiles(selected) {
     const pdfFile = selected[0];
     if (!pdfFile) return;
@@ -40,7 +36,6 @@ function CompressPDF() {
     setError('');
   }
 
-  // Compress PDF
   async function handleCompress() {
     if (!file) {
       setError('Please select a PDF file.');
@@ -53,13 +48,8 @@ function CompressPDF() {
     try {
       const response = await compressPDF(file, level);
       const blob = new Blob([response.data], { type: 'application/pdf' });
-
-      if (result) {
-        URL.revokeObjectURL(result);
-      }
-      const url = URL.createObjectURL(blob);
-      setResult(url);
-
+      if (result) URL.revokeObjectURL(result);
+      setResult(URL.createObjectURL(blob));
     } catch (err) {
       console.error(err);
       const msg = await getErrorMessage(err);
@@ -71,28 +61,14 @@ function CompressPDF() {
 
   return (
     <div className="page-container">
-
-      {/* Page Header */}
       <div className="page-header">
-
-        <div
-          className="page-icon"
-          style={{
-            background: '#247a64'
-          }}
-        >
+        <div className="page-icon" style={{ background: '#247a64' }}>
           <HiCollection />
         </div>
-
         <h1>Compress PDF</h1>
-
-        <p>
-          Reduce your PDF file size without losing quality.
-        </p>
-
+        <p>Reduce your PDF file size without losing quality.</p>
       </div>
 
-      {/* Upload */}
       {!loading && !result && (
         <UploadBox
           accept=".pdf"
@@ -102,36 +78,21 @@ function CompressPDF() {
         />
       )}
 
-      {/* Selected File */}
       {file && !loading && !result && (
         <div className="file-list">
-
           <div className="file-item">
-
-            <span className="file-name">
-              {file.name}
-            </span>
-
+            <span className="file-name">{file.name}</span>
             <span className="file-size">
               {(file.size / 1024 / 1024).toFixed(2)} MB
             </span>
-
           </div>
 
-          {/* Compression Options */}
           <div className="compression-options">
-
             <h3>Compression Level</h3>
-
             <div className="compression-buttons">
-
               <button
                 type="button"
-                className={
-                  level === 'high'
-                    ? 'compression-option active'
-                    : 'compression-option'
-                }
+                className={level === 'high' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('high')}
               >
                 <strong>High Quality</strong>
@@ -140,11 +101,7 @@ function CompressPDF() {
 
               <button
                 type="button"
-                className={
-                  level === 'medium'
-                    ? 'compression-option active'
-                    : 'compression-option'
-                }
+                className={level === 'medium' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('medium')}
               >
                 <strong>Medium</strong>
@@ -153,49 +110,27 @@ function CompressPDF() {
 
               <button
                 type="button"
-                className={
-                  level === 'low'
-                    ? 'compression-option active'
-                    : 'compression-option'
-                }
+                className={level === 'low' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('low')}
               >
                 <strong>Small Size</strong>
                 <span>Maximum compression</span>
               </button>
-
             </div>
-
           </div>
 
-          <button
-            className="action-btn"
-            onClick={handleCompress}
-          >
+          <button className="action-btn" onClick={handleCompress}>
             Compress PDF
           </button>
-
         </div>
       )}
 
-      {/* Loading */}
-      {loading && (
-        <Loading message="Compressing your PDF..." />
-      )}
+      {loading && <Loading message="Compressing your PDF..." />}
 
-      {/* Result */}
       {result && (
         <div className="result-box">
-
-          <p className="result-text">
-            Your compressed PDF is ready.
-          </p>
-
-          <DownloadButton
-            fileUrl={result}
-            fileName="compressed.pdf"
-          />
-
+          <p className="result-text">Your compressed PDF is ready.</p>
+          <DownloadButton fileUrl={result} fileName="compressed.pdf" />
           <button
             className="reset-btn"
             onClick={() => {
@@ -207,17 +142,10 @@ function CompressPDF() {
           >
             Compress Another PDF
           </button>
-
         </div>
       )}
 
-      {/* Error */}
-      {error && (
-        <p className="error-text">
-          {error}
-        </p>
-      )}
-
+      {error && <p className="error-text">{error}</p>}
     </div>
   );
 }

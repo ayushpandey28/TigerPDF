@@ -3,7 +3,13 @@ const sharp = require('sharp');
 const { PDFDocument } = require('pdf-lib');
 const { getImageFormat } = require('../utils/fileValidation');
 
-// Convert images to PDF
+async function cleanUpFiles(files) {
+  if (!Array.isArray(files)) return;
+  for (const file of files) {
+    if (file?.path) await fs.unlink(file.path).catch(() => {});
+  }
+}
+
 async function convertImageToPdf(req, res) {
   const files = req.files;
 
@@ -23,12 +29,10 @@ async function convertImageToPdf(req, res) {
       let imageBytes = file.buffer;
       if (!imageBytes && file.path) {
         imageBytes = await fs.readFile(file.path);
-        // Clean up immediately after reading to free disk space
-        await cleanUpFile(file.path);
+        await fs.unlink(file.path).catch(() => {});
       }
 
       const imageFormat = await getImageFormat(imageBytes);
-
       if (!imageFormat) {
         await cleanUpFiles(files);
         return res.status(400).json({ message: 'Please upload valid JPG, PNG or WEBP images.' });
@@ -36,14 +40,13 @@ async function convertImageToPdf(req, res) {
 
       let image;
       if (imageFormat === 'webp') {
-        // Check if image has transparency; if not, convert to JPEG for 3x faster embedding and smaller PDF size
         const meta = await sharp(imageBytes).metadata();
         if (meta.hasAlpha) {
-          imageBytes = await sharp(imageBytes).png().toBuffer();
-          image = await pdfDoc.embedPng(imageBytes);
+          const pngBytes = await sharp(imageBytes).png().toBuffer();
+          image = await pdfDoc.embedPng(pngBytes);
         } else {
-          imageBytes = await sharp(imageBytes).jpeg({ quality: 85 }).toBuffer();
-          image = await pdfDoc.embedJpg(imageBytes);
+          const jpegBytes = await sharp(imageBytes).jpeg({ quality: 85 }).toBuffer();
+          image = await pdfDoc.embedJpg(jpegBytes);
         }
       } else if (imageFormat === 'png') {
         image = await pdfDoc.embedPng(imageBytes);
@@ -51,7 +54,6 @@ async function convertImageToPdf(req, res) {
         image = await pdfDoc.embedJpg(imageBytes);
       }
 
-      // Add page matching image dimensions
       const page = pdfDoc.addPage([image.width, image.height]);
       page.drawImage(image, {
         x: 0,
@@ -62,8 +64,6 @@ async function convertImageToPdf(req, res) {
     }
 
     const pdfBytes = await pdfDoc.save();
-
-    // Ensure any remaining files are cleaned
     await cleanUpFiles(files);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -74,24 +74,6 @@ async function convertImageToPdf(req, res) {
     console.error('Image to PDF Error:', error.message);
     if (files) await cleanUpFiles(files);
     return res.status(500).json({ message: 'Error converting images to PDF.' });
-  }
-}
-
-// Delete single temporary file safely
-async function cleanUpFile(filePath) {
-  if (!filePath) return;
-  try {
-    await fs.unlink(filePath);
-  } catch (e) {}
-}
-
-// Delete temporary files safely
-async function cleanUpFiles(files) {
-  if (!files || !Array.isArray(files)) return;
-  for (const file of files) {
-    if (file && file.path) {
-      await cleanUpFile(file.path);
-    }
   }
 }
 

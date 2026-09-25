@@ -2,7 +2,13 @@ const fs = require('fs/promises');
 const { PDFDocument } = require('pdf-lib');
 const { hasPdfSignature } = require('../utils/fileValidation');
 
-// Merge multiple PDFs into one
+async function cleanUpFiles(files) {
+  if (!Array.isArray(files)) return;
+  for (const file of files) {
+    if (file?.path) await fs.unlink(file.path).catch(() => {});
+  }
+}
+
 async function mergePdf(req, res) {
   const files = req.files;
 
@@ -23,8 +29,7 @@ async function mergePdf(req, res) {
       let pdfBytes = file.buffer;
       if (!pdfBytes && file.path) {
         pdfBytes = await fs.readFile(file.path);
-        // Clean up disk file immediately after reading to free container disk space
-        await cleanUpFile(file.path);
+        await fs.unlink(file.path).catch(() => {});
       }
 
       if (!pdfBytes || !hasPdfSignature(pdfBytes)) {
@@ -41,14 +46,10 @@ async function mergePdf(req, res) {
       }
 
       const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
-      copiedPages.forEach((page) => {
-        mergedPdf.addPage(page);
-      });
+      copiedPages.forEach((page) => mergedPdf.addPage(page));
     }
 
     const pdfBytes = await mergedPdf.save();
-
-    // Clean up any remaining files safely
     await cleanUpFiles(files);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -59,24 +60,6 @@ async function mergePdf(req, res) {
     console.error('Merge PDF Error:', error.message);
     if (files) await cleanUpFiles(files);
     return res.status(500).json({ message: 'Error merging PDF files.' });
-  }
-}
-
-// Delete single temporary file safely
-async function cleanUpFile(filePath) {
-  if (!filePath) return;
-  try {
-    await fs.unlink(filePath);
-  } catch (e) {}
-}
-
-// Delete temporary files safely
-async function cleanUpFiles(files) {
-  if (!files || !Array.isArray(files)) return;
-  for (const file of files) {
-    if (file && file.path) {
-      await cleanUpFile(file.path);
-    }
   }
 }
 
