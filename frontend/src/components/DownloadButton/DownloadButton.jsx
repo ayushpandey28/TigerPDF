@@ -3,7 +3,7 @@ import { HiDownload } from 'react-icons/hi';
 import './DownloadButton.css';
 
 function DownloadButton({ fileUrl, fileName }) {
-  // Download the file safely across all browsers (including Firefox and mobile)
+  // Download the file safely across all browsers
   function handleDownload() {
     const link = document.createElement('a');
     link.href = fileUrl;
