@@ -4,7 +4,7 @@
 
 Convert, Merge and Compress PDFs & Images with a clean, fast and responsive interface.
 
-Built using **React.js**, **Node.js**, **Express.js**, **JavaScript**, **HTML5**, and **CSS3**.
+Built using **React.js**, **Node.js**, **Express.js**, **JavaScript**, **HTML5**, and **CSS3**..
 
 ---
 
