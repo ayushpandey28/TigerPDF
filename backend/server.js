@@ -11,8 +11,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 const uploadDir = path.join(os.tmpdir(), 'tigerpdf-uploads');
-
-// Ensure upload directory exists and clean stale files on startup
 try {
   if (fs.existsSync(uploadDir)) {
     fs.readdirSync(uploadDir).forEach((file) => {
@@ -27,7 +25,6 @@ try {
   console.warn('Could not clean temp upload dir on startup:', err.message);
 }
 
-// Clean up temporary files associated with the request
 function cleanupReqFiles(req) {
   const filesToClean = [];
 
@@ -53,7 +50,6 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Cleanup temporary files if client closes connection early
 app.use((req, res, next) => {
   res.on('close', () => {
     if (!res.writableEnded) {
