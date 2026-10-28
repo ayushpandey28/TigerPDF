@@ -5,9 +5,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-
 dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 const uploadDir = path.join(os.tmpdir(), 'tigerpdf-uploads');
@@ -24,10 +22,8 @@ try {
 } catch (err) {
   console.warn('Could not clean temp upload dir on startup:', err.message);
 }
-
 function cleanupReqFiles(req) {
   const filesToClean = [];
-
   if (Array.isArray(req._uploadedFiles)) {
     filesToClean.push(...req._uploadedFiles);
   }
@@ -38,18 +34,15 @@ function cleanupReqFiles(req) {
     const list = Array.isArray(req.files) ? req.files : Object.values(req.files).flat();
     list.forEach((f) => f?.path && filesToClean.push(f.path));
   }
-
   filesToClean.forEach((filePath) => {
     if (filePath) fs.unlink(filePath, () => {});
   });
 }
-
 app.use(cors({
   origin: '*',
   exposedHeaders: ['Content-Length', 'Content-Type', 'Content-Disposition'],
 }));
 app.use(express.json());
-
 app.use((req, res, next) => {
   res.on('close', () => {
     if (!res.writableEnded) {
@@ -58,13 +51,11 @@ app.use((req, res, next) => {
   });
   next();
 });
-
 // Routes
 app.use('/api/image-to-pdf', require('./routes/imageToPdf'));
 app.use('/api/merge-pdf', require('./routes/mergePdf'));
 app.use('/api/compress-pdf', require('./routes/compressPdf'));
 app.use('/api/compress-image', require('./routes/compressImage'));
-
 // Health checks
 app.get(['/', '/health', '/api', '/api/health'], (req, res) => {
   res.json({
@@ -74,11 +65,9 @@ app.get(['/', '/health', '/api', '/api/health'], (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
-
 // Global error handler
 app.use((err, req, res, next) => {
   cleanupReqFiles(req);
-
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({
@@ -97,17 +86,14 @@ app.use((err, req, res, next) => {
     }
     return res.status(400).json({ message: err.message });
   }
-
   if (err.status === 400 || err.statusCode === 400 || err.isClientError) {
     return res.status(400).json({ message: err.message });
   }
-
   console.error('Server error:', err.message);
   return res.status(500).json({
     message: 'Something went wrong on the server.',
   });
 });
-
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
