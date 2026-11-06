@@ -32,7 +32,11 @@ function Navbar() {
         </Link>
 
         {/* Desktop Nav Links */}
-        <ul className={menuOpen ? 'nav-links open' : 'nav-links'}>
+        <ul
+          id="primary-navigation"
+          className={menuOpen ? 'nav-links open' : 'nav-links'}
+          aria-label="Primary navigation"
+        >
           <li>
             <Link to="/" className={isActive('/')} onClick={closeMenu}>
               Home
@@ -61,7 +65,14 @@ function Navbar() {
         </ul>
 
         {/* Hamburger Menu */}
-        <button className="menu-btn" onClick={toggleMenu}>
+        <button
+          type="button"
+          className="menu-btn"
+          onClick={toggleMenu}
+          aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={menuOpen}
+          aria-controls="primary-navigation"
+        >
           {menuOpen ? <HiX size={24} /> : <HiMenu size={24} />}
         </button>
       </div>

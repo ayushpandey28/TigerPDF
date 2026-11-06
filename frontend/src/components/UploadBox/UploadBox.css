@@ -7,3 +7,5 @@
 .upload-limit { margin-top: 14px; }
 .upload-btn { background: var(--primary); border-radius: var(--radius-sm); color: white; cursor: pointer; font-size: .9rem; font-weight: 650; margin-top: 20px; padding: 11px 18px; transition: background var(--transition); }
 .upload-btn:hover { background: var(--primary-dark); }
+.upload-btn:focus-visible { outline: 3px solid rgba(93, 156, 255, .55); outline-offset: 3px; }
+.file-input { height: 1px; opacity: 0; overflow: hidden; position: absolute; width: 1px; }

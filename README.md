@@ -166,6 +166,16 @@ TigerPDF
 
 # ⚙️ Installation
 
+## Runtime requirements
+
+Use a patched supported Node.js release:
+
+- Node.js `22.23.4` or later within the 22.x line
+- Node.js `24.22.1` or later within the 24.x line
+- Node.js `26.12.1` or later
+
+The repository declares this requirement in both package manifests. The backend also supports the optional `MAX_CONCURRENT_JOBS` environment variable; it defaults to two simultaneous processing jobs.
+
 ## Clone
 
 ```bash
@@ -176,7 +186,7 @@ git clone https://github.com/ayushpandey28/TigerPDF.git
 
 ```bash
 cd TigerPDF/frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -190,7 +200,7 @@ http://localhost:5173
 
 ```bash
 cd TigerPDF/backend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -199,6 +209,18 @@ Runs on
 ```
 http://localhost:5000
 ```
+
+## Verification commands
+
+```bash
+cd TigerPDF/backend
+npm test
+
+cd ../frontend
+npm run build
+```
+
+`npm test` exercises the production Express application assembly and document-processing regression cases. The frontend build is the production compilation check.
 
 ---
 
@@ -217,10 +239,18 @@ http://localhost:5000
 
 | Tool | Limit |
 |------|-------|
-| Image to PDF | 50 Images |
-| Merge PDF | 15 PDF Files |
+| Image to PDF | 50 Images, 100 MB combined, 120 million combined pixels |
+| Merge PDF | 15 PDF Files, 100 MB combined, 200 total pages |
 | Compress PDF | 1 PDF |
 | Compress Image | 1 Image |
+
+Individual files are limited to 20 MB. Encrypted PDFs, PDF forms during merge, animated WebP compression, and animated WebP image-to-PDF conversion are rejected explicitly because the current processing libraries cannot preserve them safely.
+
+## Deployment configuration
+
+Set `VITE_API_BASE_URL` when the frontend should use an API other than the built-in production fallback. Its value should include the `/api` path, for example `https://api.example.com/api`.
+
+The frontend is a single-page application. The static host must rewrite direct navigation requests such as `/merge-pdf` to `index.html` while leaving `/assets/*` and other static files untouched. The backend should run with a patched Node.js release and a private temporary directory; uploaded files are isolated per process and request and are removed after processing.
 
 ---
 

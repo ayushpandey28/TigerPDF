@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import UploadBox from '../../components/UploadBox/UploadBox';
 import Loading from '../../components/Loading/Loading';
 import DownloadButton from '../../components/DownloadButton/DownloadButton';
 import { HiPhotograph, HiX } from 'react-icons/hi';
-import { convertImageToPDF, getErrorMessage } from '../../services/api';
+import { convertImageToPDF, getErrorMessage, isRequestCancelled } from '../../services/api';
 import './ImageToPDF.css';
 
 function ImageToPDF() {
@@ -11,15 +11,29 @@ function ImageToPDF() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const resultRef = useRef(null);
+  const requestRef = useRef(null);
+  const mountedRef = useRef(true);
 
-  // Clean up object URL when component unmounts
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      if (result) {
-        URL.revokeObjectURL(result);
+      mountedRef.current = false;
+      requestRef.current?.abort();
+      if (resultRef.current) {
+        URL.revokeObjectURL(resultRef.current);
+        resultRef.current = null;
       }
     };
-  }, [result]);
+  }, []);
+
+  function clearResult() {
+    if (resultRef.current) {
+      URL.revokeObjectURL(resultRef.current);
+      resultRef.current = null;
+    }
+    setResult(null);
+  }
 
   // Handle files selected
   function handleFiles(selected) {
@@ -36,10 +50,7 @@ function ImageToPDF() {
       return;
     }
     setFiles(updated);
-    if (result) {
-      URL.revokeObjectURL(result);
-      setResult(null);
-    }
+    clearResult();
     setError('');
   }
 
@@ -63,21 +74,28 @@ function ImageToPDF() {
 
     setLoading(true);
     setError('');
+    const controller = new AbortController();
+    requestRef.current = controller;
 
     try {
-      const response = await convertImageToPDF(files);
+      const response = await convertImageToPDF(files, { signal: controller.signal });
+      if (controller.signal.aborted || !mountedRef.current) return;
       const blob = new Blob([response.data], { type: 'application/pdf' });
-      if (result) {
-        URL.revokeObjectURL(result);
-      }
+      clearResult();
       const url = URL.createObjectURL(blob);
+      resultRef.current = url;
       setResult(url);
     } catch (err) {
-      const msg = await getErrorMessage(err);
-      setError(msg || 'Something went wrong. Please try again.');
+      if (!isRequestCancelled(err) && mountedRef.current) {
+        const msg = await getErrorMessage(err);
+        if (mountedRef.current) setError(msg || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        if (mountedRef.current) setLoading(false);
+      }
     }
-
-    setLoading(false);
   }
 
   return (
@@ -93,9 +111,10 @@ function ImageToPDF() {
       {/* Upload */}
       {!loading && !result && (
         <UploadBox
-          accept="image/*"
-          multiple={true}
-          onFilesSelected={handleFiles}
+           accept=".jpg,.jpeg,.png,.webp"
+           multiple={true}
+           onFilesSelected={handleFiles}
+           onFilesRejected={setError}
           label="Drag & drop your images here"
         />
       )}
@@ -106,13 +125,13 @@ function ImageToPDF() {
           {files.map((file, index) => (
             <div className="file-item" key={`${file.name}-${file.size}-${index}`}>
               <span className="file-name">{file.name}</span>
-              <button className="file-remove" onClick={() => removeFile(index)}>
+              <button type="button" className="file-remove" aria-label={`Remove ${file.name}`} onClick={() => removeFile(index)}>
                 <HiX />
               </button>
             </div>
           ))}
 
-          <button className="action-btn" onClick={handleConvert}>
+           <button type="button" className="action-btn" onClick={handleConvert}>
             Convert to PDF
           </button>
         </div>
@@ -126,13 +145,14 @@ function ImageToPDF() {
         <div className="result-box">
           <p className="result-text">Your PDF is ready.</p>
           <DownloadButton fileUrl={result} fileName="converted.pdf" />
-          <button
-            className="reset-btn"
-            onClick={() => {
-              if (result) URL.revokeObjectURL(result);
-              setFiles([]);
-              setResult(null);
-            }}
+           <button
+             type="button"
+             className="reset-btn"
+             onClick={() => {
+               requestRef.current?.abort();
+               clearResult();
+               setFiles([]);
+             }}
           >
             Convert More Images
           </button>

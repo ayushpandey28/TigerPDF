@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import UploadBox from '../../components/UploadBox/UploadBox';
 import Loading from '../../components/Loading/Loading';
 import DownloadButton from '../../components/DownloadButton/DownloadButton';
 import { HiDocumentDuplicate, HiX } from 'react-icons/hi';
-import { mergePDFs, getErrorMessage } from '../../services/api';
+import { mergePDFs, getErrorMessage, isRequestCancelled } from '../../services/api';
 import './MergePDF.css';
 
 function MergePDF() {
@@ -11,15 +11,30 @@ function MergePDF() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const resultRef = useRef(null);
+  const requestRef = useRef(null);
+  const mountedRef = useRef(true);
 
   // Clean up object URL when component unmounts
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      if (result) {
-        URL.revokeObjectURL(result);
+      mountedRef.current = false;
+      requestRef.current?.abort();
+      if (resultRef.current) {
+        URL.revokeObjectURL(resultRef.current);
+        resultRef.current = null;
       }
     };
-  }, [result]);
+  }, []);
+
+  function clearResult() {
+    if (resultRef.current) {
+      URL.revokeObjectURL(resultRef.current);
+      resultRef.current = null;
+    }
+    setResult(null);
+  }
 
   // Handle files selected
   function handleFiles(selected) {
@@ -36,10 +51,7 @@ function MergePDF() {
       return;
     }
     setFiles(updated);
-    if (result) {
-      URL.revokeObjectURL(result);
-      setResult(null);
-    }
+    clearResult();
     setError('');
   }
 
@@ -63,21 +75,28 @@ function MergePDF() {
 
     setLoading(true);
     setError('');
+    const controller = new AbortController();
+    requestRef.current = controller;
 
     try {
-      const response = await mergePDFs(files);
+      const response = await mergePDFs(files, { signal: controller.signal });
+      if (controller.signal.aborted || !mountedRef.current) return;
       const blob = new Blob([response.data], { type: 'application/pdf' });
-      if (result) {
-        URL.revokeObjectURL(result);
-      }
+      clearResult();
       const url = URL.createObjectURL(blob);
+      resultRef.current = url;
       setResult(url);
     } catch (err) {
-      const msg = await getErrorMessage(err);
-      setError(msg || 'Something went wrong. Please try again.');
+      if (!isRequestCancelled(err) && mountedRef.current) {
+        const msg = await getErrorMessage(err);
+        if (mountedRef.current) setError(msg || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        if (mountedRef.current) setLoading(false);
+      }
     }
-
-    setLoading(false);
   }
 
   return (
@@ -93,10 +112,11 @@ function MergePDF() {
       {/* Upload */}
       {!loading && !result && (
         <UploadBox
-          accept=".pdf"
-          multiple={true}
-          onFilesSelected={handleFiles}
-          label="Drag & drop your PDF files here"
+           accept=".pdf"
+           multiple={true}
+           onFilesSelected={handleFiles}
+           onFilesRejected={setError}
+           label="Drag & drop your PDF files here"
         />
       )}
 
@@ -106,13 +126,13 @@ function MergePDF() {
           {files.map((file, index) => (
             <div className="file-item" key={`${file.name}-${file.size}-${index}`}>
               <span className="file-name">{file.name}</span>
-              <button className="file-remove" onClick={() => removeFile(index)}>
+              <button type="button" className="file-remove" aria-label={`Remove ${file.name}`} onClick={() => removeFile(index)}>
                 <HiX />
               </button>
             </div>
           ))}
 
-          <button className="action-btn" onClick={handleMerge}>
+           <button type="button" className="action-btn" onClick={handleMerge}>
             Merge PDFs
           </button>
         </div>
@@ -126,13 +146,14 @@ function MergePDF() {
         <div className="result-box">
           <p className="result-text">Your merged PDF is ready.</p>
           <DownloadButton fileUrl={result} fileName="merged.pdf" />
-          <button
-            className="reset-btn"
-            onClick={() => {
-              if (result) URL.revokeObjectURL(result);
-              setFiles([]);
-              setResult(null);
-            }}
+           <button
+             type="button"
+             className="reset-btn"
+             onClick={() => {
+               requestRef.current?.abort();
+               clearResult();
+               setFiles([]);
+             }}
           >
             Merge More PDFs
           </button>

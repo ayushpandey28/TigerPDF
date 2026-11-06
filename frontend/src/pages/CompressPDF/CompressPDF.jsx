@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import UploadBox from '../../components/UploadBox/UploadBox';
 import Loading from '../../components/Loading/Loading';
 import DownloadButton from '../../components/DownloadButton/DownloadButton';
 import { HiCollection } from 'react-icons/hi';
-import { compressPDF, getErrorMessage } from '../../services/api';
+import { compressPDF, getErrorMessage, isRequestCancelled } from '../../services/api';
 import './CompressPDF.css';
 
 function CompressPDF() {
@@ -12,12 +12,29 @@ function CompressPDF() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [level, setLevel] = useState('medium');
+  const resultRef = useRef(null);
+  const requestRef = useRef(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      if (result) URL.revokeObjectURL(result);
+      mountedRef.current = false;
+      requestRef.current?.abort();
+      if (resultRef.current) {
+        URL.revokeObjectURL(resultRef.current);
+        resultRef.current = null;
+      }
     };
-  }, [result]);
+  }, []);
+
+  function clearResult() {
+    if (resultRef.current) {
+      URL.revokeObjectURL(resultRef.current);
+      resultRef.current = null;
+    }
+    setResult(null);
+  }
 
   function handleFiles(selected) {
     const pdfFile = selected[0];
@@ -29,10 +46,7 @@ function CompressPDF() {
     }
 
     setFile(pdfFile);
-    if (result) {
-      URL.revokeObjectURL(result);
-      setResult(null);
-    }
+    clearResult();
     setError('');
   }
 
@@ -44,19 +58,28 @@ function CompressPDF() {
 
     setLoading(true);
     setError('');
+    const controller = new AbortController();
+    requestRef.current = controller;
 
     try {
-      const response = await compressPDF(file, level);
+      const response = await compressPDF(file, level, { signal: controller.signal });
+      if (controller.signal.aborted || !mountedRef.current) return;
       const blob = new Blob([response.data], { type: 'application/pdf' });
-      if (result) URL.revokeObjectURL(result);
-      setResult(URL.createObjectURL(blob));
+      clearResult();
+      const url = URL.createObjectURL(blob);
+      resultRef.current = url;
+      setResult(url);
     } catch (err) {
-      console.error(err);
-      const msg = await getErrorMessage(err);
-      setError(msg || 'Something went wrong. Please try again.');
+      if (!isRequestCancelled(err) && mountedRef.current) {
+        const msg = await getErrorMessage(err);
+        if (mountedRef.current) setError(msg || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        if (mountedRef.current) setLoading(false);
+      }
     }
-
-    setLoading(false);
   }
 
   return (
@@ -66,14 +89,15 @@ function CompressPDF() {
           <HiCollection />
         </div>
         <h1>Compress PDF</h1>
-        <p>Reduce your PDF file size without losing quality.</p>
+        <p>Reduce your PDF file size by recompressing supported embedded images.</p>
       </div>
 
       {!loading && !result && (
         <UploadBox
           accept=".pdf"
-          multiple={false}
-          onFilesSelected={handleFiles}
+           multiple={false}
+           onFilesSelected={handleFiles}
+           onFilesRejected={setError}
           label="Drag & drop your PDF here"
         />
       )}
@@ -90,8 +114,9 @@ function CompressPDF() {
           <div className="compression-options">
             <h3>Compression Level</h3>
             <div className="compression-buttons">
-              <button
-                type="button"
+                <button
+                  type="button"
+                  aria-pressed={level === 'high'}
                 className={level === 'high' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('high')}
               >
@@ -99,8 +124,9 @@ function CompressPDF() {
                 <span>Less compression</span>
               </button>
 
-              <button
-                type="button"
+                <button
+                  type="button"
+                  aria-pressed={level === 'medium'}
                 className={level === 'medium' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('medium')}
               >
@@ -108,8 +134,9 @@ function CompressPDF() {
                 <span>Balanced</span>
               </button>
 
-              <button
-                type="button"
+                <button
+                  type="button"
+                  aria-pressed={level === 'low'}
                 className={level === 'low' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('low')}
               >
@@ -119,7 +146,7 @@ function CompressPDF() {
             </div>
           </div>
 
-          <button className="action-btn" onClick={handleCompress}>
+           <button type="button" className="action-btn" onClick={handleCompress}>
             Compress PDF
           </button>
         </div>
@@ -131,13 +158,14 @@ function CompressPDF() {
         <div className="result-box">
           <p className="result-text">Your compressed PDF is ready.</p>
           <DownloadButton fileUrl={result} fileName="compressed.pdf" />
-          <button
-            className="reset-btn"
-            onClick={() => {
-              if (result) URL.revokeObjectURL(result);
-              setFile(null);
-              setResult(null);
-              setLevel('medium');
+           <button
+             type="button"
+             className="reset-btn"
+             onClick={() => {
+               requestRef.current?.abort();
+               clearResult();
+               setFile(null);
+               setLevel('medium');
             }}
           >
             Compress Another PDF

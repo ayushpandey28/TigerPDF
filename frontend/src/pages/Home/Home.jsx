@@ -24,7 +24,7 @@ function Home() {
     {
       icon: <HiCollection size={24} />,
       title: 'Compress PDF',
-      description: 'Reduce the file size of your PDF without losing quality.',
+       description: 'Reduce PDF size by recompressing supported embedded images.',
       link: '/compress-pdf',
       color: '#247a64',
     },

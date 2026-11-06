@@ -20,6 +20,10 @@ export async function pingServer() {
 }
 
 export async function getErrorMessage(err) {
+  if (isRequestCancelled(err)) {
+    return null;
+  }
+
   if (err.response) {
     const status = err.response.status;
     if (status === 413) {
@@ -53,30 +57,34 @@ export async function getErrorMessage(err) {
   return null;
 }
 
-export function convertImageToPDF(files) {
+export function isRequestCancelled(err) {
+  return axios.isCancel(err) || err?.code === 'ERR_CANCELED';
+}
+
+export function convertImageToPDF(files, { signal } = {}) {
   const formData = new FormData();
   files.forEach((file) => formData.append('images', file));
-  return api.post('/image-to-pdf', formData, { responseType: 'blob' });
+  return api.post('/image-to-pdf', formData, { responseType: 'blob', signal });
 }
 
-export function mergePDFs(files) {
+export function mergePDFs(files, { signal } = {}) {
   const formData = new FormData();
   files.forEach((file) => formData.append('pdfs', file));
-  return api.post('/merge-pdf', formData, { responseType: 'blob' });
+  return api.post('/merge-pdf', formData, { responseType: 'blob', signal });
 }
 
-export function compressPDF(file, level = 'medium') {
+export function compressPDF(file, level = 'medium', { signal } = {}) {
   const formData = new FormData();
   formData.append('pdf', file);
   formData.append('level', level);
-  return api.post('/compress-pdf', formData, { responseType: 'blob' });
+  return api.post('/compress-pdf', formData, { responseType: 'blob', signal });
 }
 
-export function compressImage(file, level = 'medium') {
+export function compressImage(file, level = 'medium', { signal } = {}) {
   const formData = new FormData();
   formData.append('image', file);
   formData.append('level', level);
-  return api.post('/compress-image', formData, { responseType: 'blob' });
+  return api.post('/compress-image', formData, { responseType: 'blob', signal });
 }
 
 export default api;

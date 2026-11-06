@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import UploadBox from '../../components/UploadBox/UploadBox';
 import Loading from '../../components/Loading/Loading';
 import DownloadButton from '../../components/DownloadButton/DownloadButton';
 import { HiColorSwatch } from 'react-icons/hi';
-import { compressImage, getErrorMessage } from '../../services/api';
+import { compressImage, getErrorMessage, isRequestCancelled } from '../../services/api';
 import './CompressImage.css';
 
 function CompressImage() {
@@ -13,13 +13,43 @@ function CompressImage() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [level, setLevel] = useState('medium');
+  const [resultName, setResultName] = useState('compressed-image');
+  const resultRef = useRef(null);
+  const previewRef = useRef(null);
+  const requestRef = useRef(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      if (result) URL.revokeObjectURL(result);
-      if (preview) URL.revokeObjectURL(preview);
+      mountedRef.current = false;
+      requestRef.current?.abort();
+      if (resultRef.current) {
+        URL.revokeObjectURL(resultRef.current);
+        resultRef.current = null;
+      }
+      if (previewRef.current) {
+        URL.revokeObjectURL(previewRef.current);
+        previewRef.current = null;
+      }
     };
-  }, [result, preview]);
+  }, []);
+
+  function clearResult() {
+    if (resultRef.current) {
+      URL.revokeObjectURL(resultRef.current);
+      resultRef.current = null;
+    }
+    setResult(null);
+  }
+
+  function clearPreview() {
+    if (previewRef.current) {
+      URL.revokeObjectURL(previewRef.current);
+      previewRef.current = null;
+    }
+    setPreview(null);
+  }
 
   function handleFiles(selected) {
     const image = selected[0];
@@ -31,16 +61,12 @@ function CompressImage() {
     }
 
     setFile(image);
-    if (result) {
-      URL.revokeObjectURL(result);
-      setResult(null);
-    }
-    if (preview) {
-      URL.revokeObjectURL(preview);
-    }
+    clearResult();
+    clearPreview();
     setError('');
 
     const previewUrl = URL.createObjectURL(image);
+    previewRef.current = previewUrl;
     setPreview(previewUrl);
   }
 
@@ -52,23 +78,38 @@ function CompressImage() {
 
     setLoading(true);
     setError('');
+    const controller = new AbortController();
+    requestRef.current = controller;
 
     try {
-      const response = await compressImage(file, level);
+      const response = await compressImage(file, level, { signal: controller.signal });
+      if (controller.signal.aborted || !mountedRef.current) return;
+      const outputType = response.headers['content-type'] || file.type;
       const blob = new Blob(
         [response.data],
-        { type: response.headers['content-type'] || file.type }
+        { type: outputType }
       );
 
-      if (result) URL.revokeObjectURL(result);
-      setResult(URL.createObjectURL(blob));
+      const extension = outputType === 'image/jpeg'
+        ? 'jpg'
+        : outputType.split('/')[1] || 'bin';
+      const baseName = file.name.replace(/\.[^.]+$/, '') || 'image';
+      clearResult();
+      const url = URL.createObjectURL(blob);
+      resultRef.current = url;
+      setResult(url);
+      setResultName(`compressed-${baseName}.${extension}`);
     } catch (err) {
-      console.error(err);
-      const msg = await getErrorMessage(err);
-      setError(msg || 'Something went wrong. Please try again.');
+      if (!isRequestCancelled(err) && mountedRef.current) {
+        const msg = await getErrorMessage(err);
+        if (mountedRef.current) setError(msg || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        if (mountedRef.current) setLoading(false);
+      }
     }
-
-    setLoading(false);
   }
 
   return (
@@ -83,9 +124,10 @@ function CompressImage() {
 
       {!loading && !result && (
         <UploadBox
-          accept="image/*"
-          multiple={false}
-          onFilesSelected={handleFiles}
+          accept=".jpg,.jpeg,.png,.webp"
+           multiple={false}
+           onFilesSelected={handleFiles}
+           onFilesRejected={setError}
           label="Drag & drop your image here"
         />
       )}
@@ -108,8 +150,9 @@ function CompressImage() {
           <div className="compression-options">
             <h3>Compression Level</h3>
             <div className="compression-buttons">
-              <button
-                type="button"
+                <button
+                  type="button"
+                  aria-pressed={level === 'high'}
                 className={level === 'high' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('high')}
               >
@@ -117,8 +160,9 @@ function CompressImage() {
                 <span>Less compression</span>
               </button>
 
-              <button
-                type="button"
+                <button
+                  type="button"
+                  aria-pressed={level === 'medium'}
                 className={level === 'medium' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('medium')}
               >
@@ -126,8 +170,9 @@ function CompressImage() {
                 <span>Balanced</span>
               </button>
 
-              <button
-                type="button"
+                <button
+                  type="button"
+                  aria-pressed={level === 'low'}
                 className={level === 'low' ? 'compression-option active' : 'compression-option'}
                 onClick={() => setLevel('low')}
               >
@@ -137,7 +182,7 @@ function CompressImage() {
             </div>
           </div>
 
-          <button className="action-btn" onClick={handleCompress}>
+           <button type="button" className="action-btn" onClick={handleCompress}>
             Compress Image
           </button>
         </div>
@@ -150,16 +195,18 @@ function CompressImage() {
           <p className="result-text">Your compressed image is ready.</p>
           <DownloadButton
             fileUrl={result}
-            fileName={'compressed-' + file.name}
+             fileName={resultName}
           />
-          <button
-            className="reset-btn"
-            onClick={() => {
-              if (result) URL.revokeObjectURL(result);
-              setFile(null);
-              setPreview(null);
-              setResult(null);
-              setLevel('medium');
+           <button
+             type="button"
+             className="reset-btn"
+             onClick={() => {
+               requestRef.current?.abort();
+               clearResult();
+               clearPreview();
+               setFile(null);
+               setResultName('compressed-image');
+               setLevel('medium');
             }}
           >
             Compress Another Image

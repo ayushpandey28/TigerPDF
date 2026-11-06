@@ -1,257 +1,283 @@
 const sharp = require('sharp');
-const { PDFDocument } = require('pdf-lib');
-const express = require('express');
-const cors = require('cors');
-const multer = require('multer');
+const { PDFDocument, PDFName, PDFRawStream } = require('pdf-lib');
+const { createApp } = require('./server');
+const { cleanupUploadDirectory } = require('./middleware/upload');
+const { convertImageToPdf } = require('./controllers/imageToPdf');
 
-process.env.PORT = '5099';
-
-const app = express();
-app.use(cors({ origin: '*', exposedHeaders: ['Content-Length', 'Content-Type', 'Content-Disposition'] }));
-app.use(express.json());
-
-const imageToPdfRoute = require('./routes/imageToPdf');
-const mergePdfRoute = require('./routes/mergePdf');
-const compressPdfRoute = require('./routes/compressPdf');
-const compressImageRoute = require('./routes/compressImage');
-
-app.use('/api/image-to-pdf', imageToPdfRoute);
-app.use('/api/merge-pdf', mergePdfRoute);
-app.use('/api/compress-pdf', compressPdfRoute);
-app.use('/api/compress-image', compressImageRoute);
-
-app.get(['/', '/health', '/api', '/api/health'], (req, res) => {
-  res.json({ status: 'ok', message: 'TigerPDF Backend is running!' });
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ message: 'This file is larger than the supported 20 MB limit.' });
-    }
-    return res.status(400).json({ message: err.message });
-  }
-  if (err.status === 400 || err.isClientError) {
-    return res.status(400).json({ message: err.message });
-  }
-  return res.status(500).json({ message: err.message });
-});
-
+const app = createApp();
 let server;
+let baseUrl;
+
+function assert(condition, testName) {
+  if (condition) {
+    console.log(`[PASS] ${testName}`);
+    return true;
+  }
+
+  console.error(`[FAIL] ${testName}`);
+  return false;
+}
+
+async function request(path, options = {}) {
+  return fetch(`${baseUrl}${path}`, options);
+}
+
+async function responseBuffer(response) {
+  return Buffer.from(await response.arrayBuffer());
+}
+
+function appendFiles(form, field, files, type) {
+  files.forEach((buffer, index) => {
+    form.append(field, new Blob([buffer], { type }), `fixture-${index}.${type.split('/')[1]}`);
+  });
+}
+
+async function createPdf(pageSizes = [[200, 200]]) {
+  const doc = await PDFDocument.create();
+  pageSizes.forEach((size) => doc.addPage(size));
+  return Buffer.from(await doc.save());
+}
+
+async function invokeConvertWithOffset(buffer) {
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    setHeader() {},
+    send(value) {
+      this.body = Buffer.from(value);
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+  };
+
+  await convertImageToPdf({ files: [{ buffer }] }, response);
+  return response;
+}
 
 async function runTests() {
-  await new Promise((resolve) => {
-    server = app.listen(5099, resolve);
+  server = await new Promise((resolve) => {
+    const instance = app.listen(0, () => resolve(instance));
   });
-  console.log('Test server running on port 5099');
+  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  console.log(`Test server running on ${baseUrl}`);
 
   let passed = 0;
   let failed = 0;
+  const check = (condition, name) => {
+    if (assert(condition, name)) passed += 1;
+    else failed += 1;
+  };
 
-  function assert(condition, testName) {
-    if (condition) {
-      console.log(`[PASS] ${testName}`);
-      passed++;
-    } else {
-      console.error(`[FAIL] ${testName}`);
-      failed++;
+  try {
+    const health = await request('/api/health');
+    const healthData = await health.json();
+    check(health.status === 200 && healthData.status === 'ok', 'GET /api/health uses production app configuration');
+
+    const notFound = await request('/api/no-such-route');
+    const notFoundData = await notFound.json();
+    check(notFound.status === 404 && notFoundData.message === 'Route not found.', 'Unknown routes return consistent JSON 404 responses');
+
+    const jpg = await sharp({
+      create: { width: 100, height: 80, channels: 3, background: { r: 255, g: 0, b: 0 } },
+    }).jpeg().toBuffer();
+    const png = await sharp({
+      create: { width: 100, height: 80, channels: 4, background: { r: 0, g: 255, b: 0, alpha: 0.5 } },
+    }).png().toBuffer();
+    const webp = await sharp({
+      create: { width: 100, height: 80, channels: 3, background: { r: 0, g: 0, b: 255 } },
+    }).webp().toBuffer();
+
+    const imageForm = new FormData();
+    appendFiles(imageForm, 'images', [jpg, png, webp], 'image/jpeg');
+    const imageResponse = await request('/api/image-to-pdf', { method: 'POST', body: imageForm });
+    const imagePdf = await PDFDocument.load(await responseBuffer(imageResponse));
+    check(imageResponse.status === 200 && imagePdf.getPageCount() === 3, 'Image-to-PDF converts supported images');
+
+    const firstPdf = await createPdf([[200, 200]]);
+    const secondPdf = await createPdf([[300, 300], [400, 400]]);
+    const mergeForm = new FormData();
+    appendFiles(mergeForm, 'pdfs', [firstPdf, secondPdf], 'application/pdf');
+    const mergeResponse = await request('/api/merge-pdf', { method: 'POST', body: mergeForm });
+    const mergedPdf = await PDFDocument.load(await responseBuffer(mergeResponse));
+    check(mergeResponse.status === 200 && mergedPdf.getPageCount() === 3, 'PDF merge preserves page order and count');
+
+    const compressPdfForm = new FormData();
+    compressPdfForm.append('pdf', new Blob([firstPdf], { type: 'application/pdf' }), 'source.pdf');
+    compressPdfForm.append('level', 'low');
+    const compressPdfResponse = await request('/api/compress-pdf', {
+      method: 'POST',
+      body: compressPdfForm,
+    });
+    const compressedPdfBytes = await responseBuffer(compressPdfResponse);
+    check(
+      compressPdfResponse.status === 200
+      && (await PDFDocument.load(compressedPdfBytes)).getPageCount() === 1,
+      'PDF compression returns a valid PDF',
+    );
+
+    for (const [name, buffer, mime] of [['JPEG', jpg, 'image/jpeg'], ['PNG', png, 'image/png'], ['WebP', webp, 'image/webp']]) {
+      const form = new FormData();
+      form.append('image', new Blob([buffer], { type: mime }), `source.${name.toLowerCase()}`);
+      form.append('level', 'low');
+      const response = await request('/api/compress-image', { method: 'POST', body: form });
+      const result = await responseBuffer(response);
+      const metadata = await sharp(result).metadata();
+      check(response.status === 200 && metadata.format === name.toLowerCase(), `Image compression returns valid ${name}`);
     }
-  }
 
-  // 1. Health check test
-  try {
-    const res = await fetch('http://localhost:5099/api/health');
-    const data = await res.json();
-    assert(res.status === 200 && data.status === 'ok', 'GET /api/health returns 200 OK');
-  } catch (err) {
-    assert(false, 'GET /api/health returns 200 OK: ' + err.message);
-  }
+    const fakePdfForm = new FormData();
+    fakePdfForm.append('pdfs', new Blob([Buffer.from('not a pdf')], { type: 'application/pdf' }), 'fake.pdf');
+    fakePdfForm.append('pdfs', new Blob([Buffer.from('not a pdf')], { type: 'application/pdf' }), 'fake-2.pdf');
+    const fakePdfResponse = await request('/api/merge-pdf', { method: 'POST', body: fakePdfForm });
+    check(fakePdfResponse.status === 422, 'Malformed PDFs return a client validation status');
 
-  try {
-    const res = await fetch('http://localhost:5099/health');
-    const data = await res.json();
-    assert(res.status === 200 && data.status === 'ok', 'GET /health returns 200 OK');
-  } catch (err) {
-    assert(false, 'GET /health returns 200 OK: ' + err.message);
-  }
+    const fakeImageForm = new FormData();
+    fakeImageForm.append('image', new Blob([Buffer.from('<svg></svg>')], { type: 'image/jpeg' }), 'renamed.jpg');
+    fakeImageForm.append('level', 'low');
+    const fakeImageResponse = await request('/api/compress-image', { method: 'POST', body: fakeImageForm });
+    check(fakeImageResponse.status === 422, 'Renamed unsupported images are rejected before Sharp');
 
-  // 2. Image to PDF test
-  try {
-    const jpgBuf = await sharp({ create: { width: 100, height: 100, channels: 3, background: { r: 255, g: 0, b: 0 } } }).jpeg().toBuffer();
-    const pngBuf = await sharp({ create: { width: 100, height: 100, channels: 4, background: { r: 0, g: 255, b: 0, alpha: 0.5 } } }).png().toBuffer();
-    const webpBuf = await sharp({ create: { width: 100, height: 100, channels: 3, background: { r: 0, g: 0, b: 255 } } }).webp().toBuffer();
-
-    const form = new FormData();
-    form.append('images', new Blob([jpgBuf], { type: 'image/jpeg' }), 'test1.jpg');
-    form.append('images', new Blob([pngBuf], { type: 'image/png' }), 'test2.png');
-    form.append('images', new Blob([webpBuf], { type: 'image/webp' }), 'test3.webp');
-
-    const res = await fetch('http://localhost:5099/api/image-to-pdf', {
+    const truncatedImageForm = new FormData();
+    truncatedImageForm.append(
+      'image',
+      new Blob([png.subarray(0, png.length - 40)], { type: 'image/png' }),
+      'truncated.png',
+    );
+    truncatedImageForm.append('level', 'low');
+    const truncatedImageResponse = await request('/api/compress-image', {
       method: 'POST',
-      body: form,
+      body: truncatedImageForm,
     });
+    check(truncatedImageResponse.status === 422, 'Truncated images return a client validation status');
 
-    const pdfBuffer = Buffer.from(await res.arrayBuffer());
-    const doc = await PDFDocument.load(pdfBuffer);
-    assert(res.status === 200 && doc.getPageCount() === 3, 'POST /api/image-to-pdf converts JPG, PNG, and WebP into 3-page PDF');
-  } catch (err) {
-    assert(false, 'POST /api/image-to-pdf: ' + err.message);
+    const compressedJsonResponse = await request('/api/health', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Encoding': 'br',
+      },
+      body: Buffer.from('{}'),
+    });
+    check(compressedJsonResponse.status === 415, 'Compressed JSON bodies are rejected safely');
+
+    const invalidLevelForm = new FormData();
+    invalidLevelForm.append('image', new Blob([jpg], { type: 'image/jpeg' }), 'source.jpg');
+    invalidLevelForm.append('level', 'invalid');
+    const invalidLevelResponse = await request('/api/compress-image', {
+      method: 'POST',
+      body: invalidLevelForm,
+    });
+    check(invalidLevelResponse.status === 400, 'Invalid compression levels return 400');
+
+    const missingLevelForm = new FormData();
+    missingLevelForm.append('image', new Blob([jpg], { type: 'image/jpeg' }), 'source.jpg');
+    const missingLevelResponse = await request('/api/compress-image', {
+      method: 'POST',
+      body: missingLevelForm,
+    });
+    check(missingLevelResponse.status === 400, 'Missing compression levels return 400');
+
+    const excessiveFieldsForm = new FormData();
+    excessiveFieldsForm.append('image', new Blob([jpg], { type: 'image/jpeg' }), 'source.jpg');
+    excessiveFieldsForm.append('level', 'low');
+    excessiveFieldsForm.append('unexpected', 'not allowed');
+    const excessiveFieldsResponse = await request('/api/compress-image', {
+      method: 'POST',
+      body: excessiveFieldsForm,
+    });
+    check(excessiveFieldsResponse.status === 400, 'Unexpected multipart fields are rejected');
+
+    const orientationInput = await sharp({
+      create: { width: 120, height: 80, channels: 3, background: 'red' },
+    }).jpeg({ quality: 100 }).withMetadata({ orientation: 6 }).toBuffer();
+    const orientationForm = new FormData();
+    orientationForm.append('images', new Blob([orientationInput], { type: 'image/jpeg' }), 'portrait.jpg');
+    const orientationResponse = await request('/api/image-to-pdf', {
+      method: 'POST',
+      body: orientationForm,
+    });
+    const orientationPdf = await PDFDocument.load(await responseBuffer(orientationResponse));
+    const orientationPage = orientationPdf.getPages()[0].getSize();
+    check(
+      orientationResponse.status === 200 && orientationPage.height > orientationPage.width,
+      'EXIF orientation is applied before PDF embedding',
+    );
+
+    const animatedRaw = Buffer.alloc(32 * 64 * 3);
+    for (let index = 0; index < animatedRaw.length; index += 3) {
+      animatedRaw[index] = 255;
+      animatedRaw[index + 1] = index % 255;
+    }
+    const animatedWebp = await sharp(animatedRaw, {
+      raw: { width: 32, height: 64, channels: 3, pageHeight: 32 },
+    }).webp({ quality: 80, loop: 0, delay: [100, 100] }).toBuffer();
+    const animatedForm = new FormData();
+    animatedForm.append('image', new Blob([animatedWebp], { type: 'image/webp' }), 'animated.webp');
+    animatedForm.append('level', 'low');
+    const animatedResponse = await request('/api/compress-image', {
+      method: 'POST',
+      body: animatedForm,
+    });
+    check(animatedResponse.status === 422, 'Animated WebP is explicitly rejected');
+
+    const formDoc = await PDFDocument.create();
+    const formPage = formDoc.addPage([300, 300]);
+    const field = formDoc.getForm().createTextField('fixtureField');
+    field.setText('fixture');
+    field.addToPage(formPage, { x: 20, y: 20, width: 120, height: 30 });
+    const formPdf = Buffer.from(await formDoc.save());
+    const formMerge = new FormData();
+    appendFiles(formMerge, 'pdfs', [formPdf, firstPdf], 'application/pdf');
+    const formMergeResponse = await request('/api/merge-pdf', { method: 'POST', body: formMerge });
+    check(formMergeResponse.status === 422, 'PDF forms are rejected rather than silently destroyed');
+
+    const cmykImage = await sharp({
+      create: { width: 500, height: 400, channels: 3, background: { r: 10, g: 100, b: 200 } },
+    }).toColourspace('cmyk').jpeg({ quality: 100 }).toBuffer();
+    const cmykDoc = await PDFDocument.create();
+    const cmykEmbedded = await cmykDoc.embedJpg(cmykImage);
+    cmykDoc.addPage([500, 400]).drawImage(cmykEmbedded, { x: 0, y: 0, width: 500, height: 400 });
+    const cmykPdf = Buffer.from(await cmykDoc.save({ useObjectStreams: false }));
+    const cmykForm = new FormData();
+    cmykForm.append('pdf', new Blob([cmykPdf], { type: 'application/pdf' }), 'cmyk.pdf');
+    cmykForm.append('level', 'low');
+    const cmykResponse = await request('/api/compress-pdf', { method: 'POST', body: cmykForm });
+    const cmykOutput = await PDFDocument.load(await responseBuffer(cmykResponse));
+    let cmykColorSpace;
+    for (const [, object] of cmykOutput.context.enumerateIndirectObjects()) {
+      if (object instanceof PDFRawStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
+        cmykColorSpace = object.dict.get(PDFName.of('ColorSpace'))?.toString();
+        break;
+      }
+    }
+    check(cmykResponse.status === 200 && cmykColorSpace === '/DeviceCMYK', 'CMYK PDF streams retain color-space metadata');
+
+    const offsetPool = Buffer.alloc(128 + jpg.length);
+    jpg.copy(offsetPool, 128);
+    const offsetResponse = await invokeConvertWithOffset(offsetPool.subarray(128));
+    check(offsetResponse.statusCode === 200, 'JPEG buffers with nonzero offsets are normalized safely');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await cleanupUploadDirectory();
   }
 
-  // 3. Merge PDF test
-  try {
-    const doc1 = await PDFDocument.create();
-    doc1.addPage([200, 200]);
-    const pdf1 = Buffer.from(await doc1.save());
-
-    const doc2 = await PDFDocument.create();
-    doc2.addPage([200, 200]);
-    doc2.addPage([200, 200]);
-    const pdf2 = Buffer.from(await doc2.save());
-
-    const form = new FormData();
-    form.append('pdfs', new Blob([pdf1], { type: 'application/pdf' }), 'file1.pdf');
-    form.append('pdfs', new Blob([pdf2], { type: 'application/pdf' }), 'file2.pdf');
-
-    const res = await fetch('http://localhost:5099/api/merge-pdf', {
-      method: 'POST',
-      body: form,
-    });
-
-    const mergedBuf = Buffer.from(await res.arrayBuffer());
-    const mergedDoc = await PDFDocument.load(mergedBuf);
-    assert(res.status === 200 && mergedDoc.getPageCount() === 3, 'POST /api/merge-pdf merges 1-page and 2-page PDFs into 3-page PDF');
-  } catch (err) {
-    assert(false, 'POST /api/merge-pdf: ' + err.message);
-  }
-
-  // 4. Compress PDF test
-  try {
-    const doc = await PDFDocument.create();
-    const page = doc.addPage([600, 800]);
-    const imgBuf = await sharp({ create: { width: 800, height: 600, channels: 3, background: { r: 100, g: 150, b: 200 } } }).jpeg().toBuffer();
-    const embeddedImg = await doc.embedJpg(imgBuf);
-    page.drawImage(embeddedImg, { x: 0, y: 0, width: 600, height: 400 });
-    const originalPdfBuf = Buffer.from(await doc.save());
-
-    const form = new FormData();
-    form.append('pdf', new Blob([originalPdfBuf], { type: 'application/pdf' }), 'large.pdf');
-    form.append('level', 'low');
-
-    const res = await fetch('http://localhost:5099/api/compress-pdf', {
-      method: 'POST',
-      body: form,
-    });
-
-    const compressedBuf = Buffer.from(await res.arrayBuffer());
-    const compressedDoc = await PDFDocument.load(compressedBuf);
-    assert(res.status === 200 && compressedDoc.getPageCount() === 1 && compressedBuf.length <= originalPdfBuf.length, 'POST /api/compress-pdf returns valid PDF and does not inflate file size');
-  } catch (err) {
-    assert(false, 'POST /api/compress-pdf: ' + err.message);
-  }
-
-  // 5. Compress Image test (JPEG, PNG, WebP)
-  try {
-    const jpgInput = await sharp({ create: { width: 500, height: 500, channels: 3, background: { r: 180, g: 80, b: 40 } } }).jpeg({ quality: 100 }).toBuffer();
-    const formJpg = new FormData();
-    formJpg.append('image', new Blob([jpgInput], { type: 'image/jpeg' }), 'sample.jpg');
-    formJpg.append('level', 'low');
-
-    const resJpg = await fetch('http://localhost:5099/api/compress-image', {
-      method: 'POST',
-      body: formJpg,
-    });
-    const compressedJpgBuf = Buffer.from(await resJpg.arrayBuffer());
-    const jpgMeta = await sharp(compressedJpgBuf).metadata();
-    assert(resJpg.status === 200 && jpgMeta.format === 'jpeg', 'POST /api/compress-image compresses JPEG and returns valid JPEG');
-
-    // PNG test
-    const pngInput = await sharp({ create: { width: 300, height: 300, channels: 4, background: { r: 40, g: 180, b: 90, alpha: 1 } } }).png().toBuffer();
-    const formPng = new FormData();
-    formPng.append('image', new Blob([pngInput], { type: 'image/png' }), 'sample.png');
-    formPng.append('level', 'low');
-
-    const resPng = await fetch('http://localhost:5099/api/compress-image', {
-      method: 'POST',
-      body: formPng,
-    });
-    const compressedPngBuf = Buffer.from(await resPng.arrayBuffer());
-    const pngMeta = await sharp(compressedPngBuf).metadata();
-    assert(resPng.status === 200 && pngMeta.format === 'png', 'POST /api/compress-image compresses PNG and returns valid PNG');
-
-    // WebP test
-    const webpInput = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 90, g: 40, b: 180 } } }).webp({ quality: 100 }).toBuffer();
-    const formWebp = new FormData();
-    formWebp.append('image', new Blob([webpInput], { type: 'image/webp' }), 'sample.webp');
-    formWebp.append('level', 'low');
-
-    const resWebp = await fetch('http://localhost:5099/api/compress-image', {
-      method: 'POST',
-      body: formWebp,
-    });
-    const compressedWebpBuf = Buffer.from(await resWebp.arrayBuffer());
-    const webpMeta = await sharp(compressedWebpBuf).metadata();
-    assert(resWebp.status === 200 && webpMeta.format === 'webp', 'POST /api/compress-image compresses WebP and returns valid WebP');
-  } catch (err) {
-    assert(false, 'POST /api/compress-image: ' + err.message);
-  }
-
-  // 6. Validation / Malformed file tests
-  try {
-    const fakePdf = Buffer.from('This is not a real PDF file! Plain text.');
-    const form = new FormData();
-    form.append('pdfs', new Blob([fakePdf], { type: 'application/pdf' }), 'fake.pdf');
-    form.append('pdfs', new Blob([fakePdf], { type: 'application/pdf' }), 'fake2.pdf');
-
-    const res = await fetch('http://localhost:5099/api/merge-pdf', {
-      method: 'POST',
-      body: form,
-    });
-    assert(res.status === 400, 'POST /api/merge-pdf rejects fake/corrupted PDF with 400 Bad Request');
-  } catch (err) {
-    assert(false, 'Validation test fake PDF: ' + err.message);
-  }
-
-  try {
-    const doc = await PDFDocument.create();
-    doc.addPage([100, 100]);
-    const validPdf = Buffer.from(await doc.save());
-
-    const form = new FormData();
-    form.append('pdfs', new Blob([validPdf], { type: 'application/pdf' }), 'onlyone.pdf');
-
-    const res = await fetch('http://localhost:5099/api/merge-pdf', {
-      method: 'POST',
-      body: form,
-    });
-    assert(res.status === 400, 'POST /api/merge-pdf rejects single file with 400 Bad Request');
-  } catch (err) {
-    assert(false, 'Validation test single PDF: ' + err.message);
-  }
-
-  try {
-    const fakeImg = Buffer.from('Hello world non-image string');
-    const form = new FormData();
-    form.append('image', new Blob([fakeImg], { type: 'image/png' }), 'fake.png');
-
-    const res = await fetch('http://localhost:5099/api/compress-image', {
-      method: 'POST',
-      body: form,
-    });
-    assert(res.status === 400, 'POST /api/compress-image rejects fake/corrupted image with 400 Bad Request');
-  } catch (err) {
-    assert(false, 'Validation test fake image: ' + err.message);
-  }
-
-  server.close();
   console.log('\n========================================');
   console.log(`TOTAL TESTS: ${passed + failed}`);
   console.log(`PASSED: ${passed}`);
   console.log(`FAILED: ${failed}`);
   console.log('========================================\n');
 
-  if (failed > 0) process.exit(1);
+  if (failed > 0) process.exitCode = 1;
 }
 
-runTests();
+runTests().catch((error) => {
+  console.error('Test suite failed:', error);
+  process.exitCode = 1;
+});
